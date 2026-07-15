@@ -15,7 +15,7 @@ from rsl_rl.runners import OnPolicyRunner
 
 import genesis as gs
 
-from env import HoverEnv
+from src.env import HoverEnv
 
 
 def get_train_cfg(exp_name):
@@ -83,7 +83,7 @@ def get_cfgs():
         # base pose
         "base_init_pos": [-1.5, -2.5, 1.0],
         "base_init_quat": [1.0, 0.0, 0.0, 0.0],
-        "episode_length_s": 15.0,
+        "episode_length_s": 12.0,
         "at_target_threshold": 0.1,
         "gate_half_width": 0.6,
         "gate_half_height": 0.6,
@@ -134,7 +134,7 @@ def main():
     parser.add_argument("--seed", type=int, default=1)
     args = parser.parse_args()
 
-    gs.init(backend=gs.gpu, precision="32", logging_level="warning", seed=args.seed, performance_mode=True)
+    gs.init(backend=gs.gpu, precision="32", logging_level="warning", seed=args.seed, performance_mode=False)
 
     log_dir = f"logs/{args.exp_name}"
     env_cfg, obs_cfg, reward_cfg, command_cfg = get_cfgs()

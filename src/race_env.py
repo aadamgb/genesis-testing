@@ -123,9 +123,8 @@ class HoverEnv:
         self.commands = torch.zeros((self.num_envs, self.num_commands), device=gs.device, dtype=gs.tc_float)
 
         # racing track gates: each env targets the gates sequentially
-        self.gates_position = torch.tensor(command_cfg["gates_position"], device=gs.device, dtype=gs.tc_float)
-        self.gates_rpy = torch.tensor(command_cfg["gates_rpy"], device=gs.device, dtype=gs.tc_float)
-        self.num_gates = self.gates_position.shape[0]
+        self.gate_positions = torch.tensor(command_cfg["gates_position"], device=gs.device, dtype=gs.tc_float)
+        self.num_gates = self.gate_positions.shape[0]
         self.gate_idx = torch.zeros((self.num_envs,), device=gs.device, dtype=torch.long)
 
         self.actions = torch.zeros((self.num_envs, self.num_actions), device=gs.device, dtype=gs.tc_float)
@@ -142,7 +141,7 @@ class HoverEnv:
         self.reset()
 
     def _resample_commands(self, envs_idx):
-        self.commands[envs_idx] = self.gates_position[self.gate_idx[envs_idx]]
+        self.commands[envs_idx] = self.gate_positions[self.gate_idx[envs_idx]]
 
     def _at_target(self):
         return (
@@ -178,7 +177,9 @@ class HoverEnv:
 
         # pick a new random gate (different from the current one) for envs that reached their target
         envs_idx = self._at_target()
-        self.gate_idx[envs_idx] = (self.gate_idx[envs_idx] + 1) % self.num_gates
+        # offset = torch.randint(1, self.num_gates, (len(envs_idx),), device=gs.device)
+        offset = 1
+        self.gate_idx[envs_idx] = (self.gate_idx[envs_idx] + offset) % self.num_gates
         self._resample_commands(envs_idx)
 
         # check termination and reset
