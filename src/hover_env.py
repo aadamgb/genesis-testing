@@ -12,6 +12,10 @@ from genesis.utils.geom import (
 )
 
 
+def gs_rand_float(lower, upper, shape, device):
+    return (upper - lower) * torch.rand(size=shape, device=device) + lower
+
+
 class HoverEnv:
     def __init__(self, num_envs, env_cfg, obs_cfg, reward_cfg, command_cfg, show_viewer=False):
         self.num_envs = num_envs
@@ -37,7 +41,7 @@ class HoverEnv:
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
-                max_FPS=env_cfg["max_visualize_FPS"],
+                refresh_rate=env_cfg["max_visualize_FPS"],
                 camera_pos=(3.0, 0.0, 3.0),
                 camera_lookat=(0.0, 0.0, 1.0),
                 camera_fov=40,
@@ -57,33 +61,16 @@ class HoverEnv:
 
         # add target
         if self.env_cfg["visualize_target"]:
-            # static gate meshes for the whole track
-            for gate_pos, gate_rpy in zip(command_cfg["gates_position"], command_cfg["gates_rpy"]):
-                self.scene.add_entity(
-                    morph=gs.morphs.Mesh(
-                        file="misc/gate.obj",
-                        euler=(90.0 + gate_rpy[0], gate_rpy[1], gate_rpy[2]),
-                        pos=tuple(gate_pos),
-                        fixed=True,
-                        collision=False,
-                    ),
-                    surface=gs.surfaces.Rough(
-                        diffuse_texture=gs.textures.ColorTexture(
-                            color=(0.0, 0.5, 0.5),
-                        ),
-                    ),
-                )
-            # sphere marking the current target gate
             self.target = self.scene.add_entity(
                 morph=gs.morphs.Mesh(
                     file="meshes/sphere.obj",
-                    scale=0.1,
+                    scale=0.05,
                     fixed=False,
                     collision=False,
                 ),
                 surface=gs.surfaces.Rough(
                     diffuse_texture=gs.textures.ColorTexture(
-                        color=(1.0, 1.0, 0.0),
+                        color=(1.0, 0.5, 0.5),
                     ),
                 ),
             )
@@ -122,12 +109,6 @@ class HoverEnv:
         self.episode_length_buf = torch.zeros((self.num_envs,), device=gs.device, dtype=gs.tc_int)
         self.commands = torch.zeros((self.num_envs, self.num_commands), device=gs.device, dtype=gs.tc_float)
 
-        # racing track gates: each env targets the gates sequentially
-        self.gates_position = torch.tensor(command_cfg["gates_position"], device=gs.device, dtype=gs.tc_float)
-        self.gates_rpy = torch.tensor(command_cfg["gates_rpy"], device=gs.device, dtype=gs.tc_float)
-        self.num_gates = self.gates_position.shape[0]
-        self.gate_idx = torch.zeros((self.num_envs,), device=gs.device, dtype=torch.long)
-
         self.actions = torch.zeros((self.num_envs, self.num_actions), device=gs.device, dtype=gs.tc_float)
         self.last_actions = torch.zeros_like(self.actions)
 
@@ -142,7 +123,9 @@ class HoverEnv:
         self.reset()
 
     def _resample_commands(self, envs_idx):
-        self.commands[envs_idx] = self.gates_position[self.gate_idx[envs_idx]]
+        self.commands[envs_idx, 0] = gs_rand_float(*self.command_cfg["pos_x_range"], (len(envs_idx),), gs.device)
+        self.commands[envs_idx, 1] = gs_rand_float(*self.command_cfg["pos_y_range"], (len(envs_idx),), gs.device)
+        self.commands[envs_idx, 2] = gs_rand_float(*self.command_cfg["pos_z_range"], (len(envs_idx),), gs.device)
 
     def _at_target(self):
         return (
@@ -176,9 +159,8 @@ class HoverEnv:
         self.base_lin_vel[:] = transform_by_quat(self.drone.get_vel(), inv_base_quat)
         self.base_ang_vel[:] = transform_by_quat(self.drone.get_ang(), inv_base_quat)
 
-        # pick a new random gate (different from the current one) for envs that reached their target
+        # resample commands
         envs_idx = self._at_target()
-        self.gate_idx[envs_idx] = (self.gate_idx[envs_idx] + 1) % self.num_gates
         self._resample_commands(envs_idx)
 
         # check termination and reset
@@ -254,7 +236,6 @@ class HoverEnv:
             )
             self.episode_sums[key][envs_idx] = 0.0
 
-        self.gate_idx[envs_idx] = 0
         self._resample_commands(envs_idx)
         self.rel_pos = self.commands - self.base_pos
         self.last_rel_pos = self.commands - self.last_base_pos
@@ -266,9 +247,9 @@ class HoverEnv:
         return self.get_observations()
 
     # ------------ reward functions----------------
-    def _reward_progress(self):
-        progress_rew = torch.sum(torch.square(self.last_rel_pos), dim=1) - torch.sum(torch.square(self.rel_pos), dim=1)
-        return progress_rew
+    def _reward_target(self):
+        target_rew = torch.sum(torch.square(self.last_rel_pos), dim=1) - torch.sum(torch.square(self.rel_pos), dim=1)
+        return target_rew
 
     def _reward_smooth(self):
         smooth_rew = torch.sum(torch.square(self.actions - self.last_actions), dim=1)

@@ -4,8 +4,6 @@ import pickle
 import shutil
 from importlib import metadata
 
-import yaml
-
 try:
     if int(metadata.version("rsl-rl-lib").split(".")[0]) < 5:
         raise ImportError
@@ -15,7 +13,7 @@ from rsl_rl.runners import OnPolicyRunner
 
 import genesis as gs
 
-from env import HoverEnv
+from src.hover_env import HoverEnv
 
 
 def get_train_cfg(exp_name):
@@ -63,12 +61,6 @@ def get_train_cfg(exp_name):
     return train_cfg_dict
 
 
-def load_track(track_path, field):
-    with open(track_path, "r") as f:
-        track = yaml.safe_load(f)
-    return [gate[field] for gate in track["gates"]]
-
-
 def get_cfgs():
     env_cfg = {
         "num_actions": 4,
@@ -76,27 +68,22 @@ def get_cfgs():
         "termination_if_roll_greater_than": 180,  # degree
         "termination_if_pitch_greater_than": 180,
         "termination_if_close_to_ground": 0.1,
-        "termination_if_x_greater_than": 4.0,
-        "termination_if_y_greater_than": 4.0,
-        "termination_if_z_greater_than": 3.0,
-
+        "termination_if_x_greater_than": 3.0,
+        "termination_if_y_greater_than": 3.0,
+        "termination_if_z_greater_than": 2.0,
         # base pose
-        "base_init_pos": [-1.5, -2.5, 1.0],
+        "base_init_pos": [0.0, 0.0, 1.0],
         "base_init_quat": [1.0, 0.0, 0.0, 0.0],
         "episode_length_s": 15.0,
         "at_target_threshold": 0.1,
-        "gate_half_width": 0.6,
-        "gate_half_height": 0.6,
         "resampling_time_s": 3.0,
         "simulate_action_latency": True,
         "clip_actions": 1.0,
-
         # visualization
         "visualize_target": False,
         "visualize_camera": False,
         "max_visualize_FPS": 60,
     }
-
     obs_cfg = {
         "obs_scales": {
             "rel_pos": 1 / 3.0,
@@ -104,22 +91,21 @@ def get_cfgs():
             "ang_vel": 1 / 3.14159,
         },
     }
-
     reward_cfg = {
         "yaw_lambda": -10.0,
         "reward_scales": {
-            "progress": 10.0,
+            "target": 10.0,
             "smooth": -1e-4,
             "yaw": 0.01,
             "angular": -2e-4,
             "crash": -10.0,
         },
     }
-    
     command_cfg = {
         "num_commands": 3,
-        "gates_position": load_track("misc/fig8.yaml", "position"),
-        "gates_rpy": load_track("misc/fig8.yaml", "rpy"),
+        "pos_x_range": [-1.0, 1.0],
+        "pos_y_range": [-1.0, 1.0],
+        "pos_z_range": [1.0, 1.0],
     }
 
     return env_cfg, obs_cfg, reward_cfg, command_cfg
@@ -130,7 +116,7 @@ def main():
     parser.add_argument("-e", "--exp_name", type=str, default="drone-hovering")
     parser.add_argument("-v", "--vis", action="store_true", default=False)
     parser.add_argument("-B", "--num_envs", type=int, default=8192)
-    parser.add_argument("-m","--max_iterations", type=int, default=301)
+    parser.add_argument("--max_iterations", type=int, default=301)
     parser.add_argument("--seed", type=int, default=1)
     args = parser.parse_args()
 

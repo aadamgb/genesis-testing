@@ -20,7 +20,7 @@ from src.env import HoverEnv
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="drone-hovering")
-    parser.add_argument("-c", type=int, default=300)
+    parser.add_argument("-c", "--ckpt", type=int, default=300)
     parser.add_argument("-t", "--time", type=int, default=15)
     parser.add_argument("--record", action="store_true", default=False)
     args = parser.parse_args()
@@ -51,7 +51,7 @@ def main():
     )
 
     runner = OnPolicyRunner(env, train_cfg, log_dir, device=gs.device)
-    runner.load(os.path.join(log_dir, f"model_{args.c}.pt"))
+    runner.load(os.path.join(log_dir, f"model_{args.ckpt}.pt"))
     policy = runner.get_inference_policy(device=gs.device)
 
     obs_dict = env.reset()
