@@ -15,7 +15,7 @@ from rsl_rl.runners import OnPolicyRunner
 
 import genesis as gs
 
-from src.env import HoverEnv
+from src.env import RaceEnv
 
 
 def get_train_cfg(exp_name):
@@ -76,9 +76,9 @@ def get_cfgs():
         "termination_if_roll_greater_than": 180,  # degree
         "termination_if_pitch_greater_than": 180,
         "termination_if_close_to_ground": 0.1,
-        "termination_if_x_greater_than": 4.0,
-        "termination_if_y_greater_than": 4.0,
-        "termination_if_z_greater_than": 3.0,
+        "arena_half_x": 6.0,
+        "arena_half_y": 6.0,
+        "arena_z_max": 4.0,
 
         # base pose
         "base_init_pos": [-1.5, -2.5, 1.0],
@@ -90,6 +90,12 @@ def get_cfgs():
         "resampling_time_s": 3.0,
         "simulate_action_latency": True,
         "clip_actions": 1.0,
+
+        # spawn
+        "spawn_back_dist": [0.8, 1.2],   # metres behind the gate plane
+        "spawn_lateral": 0.4,            # ± in gate x
+        "spawn_vertical": 0.3,           # ± in gate z
+        "spawn_min_height": 0.5,
 
         # visualization
         "visualize_target": False,
@@ -110,7 +116,7 @@ def get_cfgs():
         "reward_scales": {
             "progress": 10.0,
             "smooth": -1e-4,
-            "yaw": 0.01,
+            "yaw": 0.0,
             "angular": -2e-4,
             "crash": -10.0,
         },
@@ -127,7 +133,7 @@ def get_cfgs():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-e", "--exp_name", type=str, default="drone-hovering")
+    parser.add_argument("-e", "--exp_name", type=str, default="test")
     parser.add_argument("-v", "--vis", action="store_true", default=False)
     parser.add_argument("-B", "--num_envs", type=int, default=8192)
     parser.add_argument("-m","--max_iterations", type=int, default=301)
@@ -150,7 +156,7 @@ def main():
     with open(f"{log_dir}/cfgs.pkl", "wb") as f:
         pickle.dump([env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg], f)
 
-    env = HoverEnv(
+    env = RaceEnv(
         num_envs=args.num_envs,
         env_cfg=env_cfg,
         obs_cfg=obs_cfg,

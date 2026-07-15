@@ -14,7 +14,7 @@ from rsl_rl.runners import OnPolicyRunner
 
 import genesis as gs
 
-from src.env import HoverEnv
+from src.env import RaceEnv
 
 
 def main():
@@ -41,7 +41,7 @@ def main():
     # set evaluation time
     env_cfg["episode_length_s"] = args.time 
 
-    env = HoverEnv(
+    env = RaceEnv(
         num_envs=1,
         env_cfg=env_cfg,
         obs_cfg=obs_cfg,

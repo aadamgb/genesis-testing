@@ -9,10 +9,12 @@ from genesis.utils.geom import (
     transform_by_quat,
     inv_quat,
     transform_quat_by_quat,
+    xyz_to_quat, 
+    quat_to_R
 )
 
 
-class HoverEnv:
+class RaceEnv:
     def __init__(self, num_envs, env_cfg, obs_cfg, reward_cfg, command_cfg, show_viewer=False):
         self.num_envs = num_envs
         self.rendered_env_num = min(10, self.num_envs)
@@ -42,7 +44,12 @@ class HoverEnv:
                 camera_lookat=(0.0, 0.0, 1.0),
                 camera_fov=40,
             ),
-            vis_options=gs.options.VisOptions(rendered_envs_idx=list(range(self.rendered_env_num))),
+            vis_options=gs.options.VisOptions(
+                show_world_frame=True,
+                world_frame_size=0.5,
+                lights=[gs.options.vis.DirectionalLight(dir=(0.2, 0.4, -1), color=(1.0, 1.0, 1.0), intensity=5.0)],
+                rendered_envs_idx=list(range(self.rendered_env_num))
+                ),
             rigid_options=gs.options.RigidOptions(
                 dt=self.dt,
                 constraint_solver=gs.constraint_solver.Newton,
@@ -105,7 +112,8 @@ class HoverEnv:
         self.base_init_quat = torch.tensor(self.env_cfg["base_init_quat"], device=gs.device)
         self.inv_base_init_quat = inv_quat(self.base_init_quat)
         # self.drone = self.scene.add_entity(gs.morphs.Drone(file="urdf/drones/cf2x.urdf"))
-        self.drone = self.scene.add_entity(gs.morphs.Drone(file="urdf/drones/racer.urdf"))
+        # self.drone = self.scene.add_entity(gs.morphs.Drone(file="urdf/drones/racer.urdf"))
+        self.drone = self.scene.add_entity(gs.morphs.Drone(file="misc/urdf/a300.urdf"))
 
         # build scene
         self.scene.build(n_envs=num_envs)
@@ -126,6 +134,7 @@ class HoverEnv:
         # racing track gates: each env targets the gates sequentially
         self.gates_position = torch.tensor(command_cfg["gates_position"], device=gs.device, dtype=gs.tc_float)
         self.gates_rpy = torch.tensor(command_cfg["gates_rpy"], device=gs.device, dtype=gs.tc_float)
+        self.gates_R = quat_to_R(xyz_to_quat(self.gates_rpy, rpy=True, degrees=True))  
         self.num_gates = self.gates_position.shape[0]
         self.gate_idx = torch.zeros((self.num_envs,), device=gs.device, dtype=torch.long)
 
@@ -151,6 +160,19 @@ class HoverEnv:
             .nonzero(as_tuple=False)
             .reshape((-1,))
         )
+    
+    def _at_gate(self):
+        R = self.gates_R[self.gate_idx]                       
+        c = self.gates_position[self.gate_idx]                
+        Rt = R.transpose(1, 2)
+
+        prev = torch.einsum("nij,nj->ni", Rt, self.last_base_pos - c)
+        curr = torch.einsum("nij,nj->ni", Rt, self.base_pos - c)
+
+        plane_crossed = (prev[:, 1] < 0.0) & (curr[:, 1] >= 0.0)              
+        inside_gate = (curr[:, 0].abs() < self.env_cfg["gate_half_width"]) & (curr[:, 2].abs() < self.env_cfg["gate_half_height"])
+
+        return plane_crossed & inside_gate, plane_crossed & ~inside_gate
 
     def step(self, actions):
         self.actions = torch.clip(actions, -self.env_cfg["clip_actions"], self.env_cfg["clip_actions"])
@@ -158,6 +180,7 @@ class HoverEnv:
 
         # 14468 is hover rpm
         self.drone.set_propellers_rpm((1 + exec_actions * 0.8) * 14468.429183500699)
+        # self.drone.set_propellers_rpm((1 + exec_actions * 0.8) * 15502.5)
         # update target pos
         if self.target is not None:
             self.target.set_pos(self.commands, zero_velocity=True)
@@ -178,18 +201,21 @@ class HoverEnv:
         self.base_ang_vel[:] = transform_by_quat(self.drone.get_ang(), inv_base_quat)
 
         # pick a new random gate (different from the current one) for envs that reached their target
-        envs_idx = self._at_target()
+        self.gate_success, self.gate_crash = self._at_gate()
+        envs_idx = self.gate_success.nonzero(as_tuple=False).reshape((-1,))
         self.gate_idx[envs_idx] = (self.gate_idx[envs_idx] + 1) % self.num_gates
         self._resample_commands(envs_idx)
+        self.rel_pos = self.commands - self.base_pos
 
         # check termination and reset
         self.crash_condition = (
             (torch.abs(self.base_euler[:, 1]) > self.env_cfg["termination_if_pitch_greater_than"])
             | (torch.abs(self.base_euler[:, 0]) > self.env_cfg["termination_if_roll_greater_than"])
-            | (torch.abs(self.rel_pos[:, 0]) > self.env_cfg["termination_if_x_greater_than"])
-            | (torch.abs(self.rel_pos[:, 1]) > self.env_cfg["termination_if_y_greater_than"])
-            | (torch.abs(self.rel_pos[:, 2]) > self.env_cfg["termination_if_z_greater_than"])
+            | (torch.abs(self.base_pos[:, 0]) > self.env_cfg["arena_half_x"])
+            | (torch.abs(self.base_pos[:, 1]) > self.env_cfg["arena_half_y"])
+            | (self.base_pos[:, 2] > self.env_cfg["arena_z_max"])
             | (self.base_pos[:, 2] < self.env_cfg["termination_if_close_to_ground"])
+            | self.gate_crash
         )
         self.reset_buf = (self.episode_length_buf > self.max_episode_length) | self.crash_condition
 
@@ -227,15 +253,45 @@ class HoverEnv:
 
     def get_observations(self):
         return TensorDict({"policy": self.obs_buf}, batch_size=[self.num_envs])
+    
+    def _sample_spawn(self, envs_idx):
+        """Sample poses behind each env's assigned gate. envs_idx: index tensor."""
+        n = len(envs_idx)
+        R = self.gates_R[self.gate_idx[envs_idx]]        # (n,3,3) gate -> world
+        c = self.gates_position[self.gate_idx[envs_idx]] # (n,3)
 
+        def u(lo, hi):
+            return torch.empty((n,), device=gs.device, dtype=gs.tc_float).uniform_(lo, hi)
+
+        lo, hi = self.env_cfg["spawn_back_dist"]
+        local = torch.stack(
+            [
+                u(-self.env_cfg["spawn_lateral"], self.env_cfg["spawn_lateral"]),
+                -u(lo, hi),                              # negative y = behind the plane
+                u(-self.env_cfg["spawn_vertical"], self.env_cfg["spawn_vertical"]),
+            ],
+            dim=-1,
+        )
+        pos = c + torch.einsum("nij,nj->ni", R, local)
+        pos[:, 2] = pos[:, 2].clamp(min=self.env_cfg["spawn_min_height"])
+
+        yaw = u(-math.pi, math.pi)
+        rpy = torch.stack([torch.zeros_like(yaw), torch.zeros_like(yaw), yaw], dim=-1)
+        quat = xyz_to_quat(rpy, rpy=True, degrees=False)
+
+        return pos, quat
+    
     def reset_idx(self, envs_idx):
         if len(envs_idx) == 0:
             return
+        
+        self.gate_idx[envs_idx] = torch.randint(0, self.num_gates, (len(envs_idx),), device=gs.device)
+        pos, quat = self._sample_spawn(envs_idx)
 
         # reset base
-        self.base_pos[envs_idx] = self.base_init_pos
-        self.last_base_pos[envs_idx] = self.base_init_pos
-        self.base_quat[envs_idx] = self.base_init_quat.reshape(1, -1)
+        self.base_pos[envs_idx] = pos
+        self.last_base_pos[envs_idx] = pos
+        self.base_quat[envs_idx] = quat
         self.drone.set_pos(self.base_pos[envs_idx], zero_velocity=True, envs_idx=envs_idx)
         self.drone.set_quat(self.base_quat[envs_idx], zero_velocity=True, envs_idx=envs_idx)
         self.base_lin_vel[envs_idx] = 0
@@ -255,7 +311,6 @@ class HoverEnv:
             )
             self.episode_sums[key][envs_idx] = 0.0
 
-        self.gate_idx[envs_idx] = 0
         self._resample_commands(envs_idx)
         self.rel_pos = self.commands - self.base_pos
         self.last_rel_pos = self.commands - self.last_base_pos
@@ -269,7 +324,7 @@ class HoverEnv:
     # ------------ reward functions----------------
     def _reward_progress(self):
         progress_rew = torch.sum(torch.square(self.last_rel_pos), dim=1) - torch.sum(torch.square(self.rel_pos), dim=1)
-        return progress_rew
+        return torch.where(self.gate_success, torch.zeros_like(progress_rew), progress_rew)
 
     def _reward_smooth(self):
         smooth_rew = torch.sum(torch.square(self.actions - self.last_actions), dim=1)
