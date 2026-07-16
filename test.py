@@ -14,7 +14,7 @@ from rsl_rl.runners import OnPolicyRunner
 
 import genesis as gs
 
-from src.env import RaceEnv
+from src.env_camera import RaceEnv
 
 
 def main():

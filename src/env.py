@@ -111,12 +111,12 @@ class RaceEnv:
         self.base_init_pos = torch.tensor(self.env_cfg["base_init_pos"], device=gs.device)
         self.base_init_quat = torch.tensor(self.env_cfg["base_init_quat"], device=gs.device)
         self.inv_base_init_quat = inv_quat(self.base_init_quat)
-        self.drone = self.scene.add_entity(gs.morphs.Drone(file="urdf/drones/cf2x.urdf"))
+        # self.drone = self.scene.add_entity(gs.morphs.Drone(file="urdf/drones/cf2x.urdf"))
         # self.drone = self.scene.add_entity(gs.morphs.Drone(file="urdf/drones/racer.urdf"))
-        # self.drone = self.scene.add_entity(gs.morphs.Drone(
-        #                                     file="misc/urdf/a300.urdf",
-        #                                     propellers_spin=(-1, -1, 1, 1),
-        #                                     ))
+        self.drone = self.scene.add_entity(gs.morphs.Drone(
+                                            file="misc/urdf/a300.urdf",
+                                            propellers_spin=(-1, -1, 1, 1),
+                                            ))
 
         # build scene
         self.scene.build(n_envs=num_envs)
@@ -129,8 +129,9 @@ class RaceEnv:
             self.episode_sums[name] = torch.zeros((self.num_envs,), device=gs.device, dtype=gs.tc_float)
 
         # initialize buffers
+        self.time_out_buf = torch.zeros((self.num_envs,), device=gs.device, dtype=gs.tc_float)
         self.rew_buf = torch.zeros((self.num_envs,), device=gs.device, dtype=gs.tc_float)
-        self.reset_buf = torch.ones((self.num_envs,), device=gs.device, dtype=gs.tc_int)
+        self.reset_buf = torch.ones((self.num_envs,), device=gs.device, dtype=gs.tc_bool)
         self.episode_length_buf = torch.zeros((self.num_envs,), device=gs.device, dtype=gs.tc_int)
         self.commands = torch.zeros((self.num_envs, self.num_commands), device=gs.device, dtype=gs.tc_float)
 
@@ -148,6 +149,9 @@ class RaceEnv:
         self.base_quat = torch.zeros((self.num_envs, 4), device=gs.device, dtype=gs.tc_float)
         self.base_lin_vel = torch.zeros((self.num_envs, 3), device=gs.device, dtype=gs.tc_float)
         self.base_ang_vel = torch.zeros((self.num_envs, 3), device=gs.device, dtype=gs.tc_float)
+        
+        self.rel_pos = torch.zeros_like(self.base_pos)
+        self.last_rel_pos = torch.zeros_like(self.base_pos)
         self.last_base_pos = torch.zeros_like(self.base_pos)
 
         self.extras = dict()  # extra information for logging
@@ -157,12 +161,12 @@ class RaceEnv:
     def _resample_commands(self, envs_idx):
         self.commands[envs_idx] = self.gates_position[self.gate_idx[envs_idx]]
 
-    def _at_target(self):
-        return (
-            (torch.norm(self.rel_pos, dim=1) < self.env_cfg["at_target_threshold"])
-            .nonzero(as_tuple=False)
-            .reshape((-1,))
-        )
+    # def _at_target(self):
+    #     return (
+    #         (torch.norm(self.rel_pos, dim=1) < self.env_cfg["at_target_threshold"])
+    #         .nonzero(as_tuple=False)
+    #         .reshape((-1,))
+    #     )
     
     def _at_gate(self):
         R = self.gates_R[self.gate_idx]                       
@@ -178,12 +182,11 @@ class RaceEnv:
         return plane_crossed & inside_gate, plane_crossed & ~inside_gate
 
     def step(self, actions):
-        self.actions = torch.clip(actions, -self.env_cfg["clip_actions"], self.env_cfg["clip_actions"])
-        exec_actions = self.actions
+        torch.clamp(actions, -self.env_cfg["clip_actions"], self.env_cfg["clip_actions"], out=self.actions)
 
         # 14468 is hover rpm
-        self.drone.set_propellers_rpm((1 + exec_actions * 0.8) * 14468.429183500699)
-        # self.drone.set_propellers_rpm((1 + exec_actions * 0.8) * 15502.5)
+        # self.drone.set_propellers_rpm((1 + self.actions * 0.8) * 14468.429183500699)
+        self.drone.set_propellers_rpm((1 + self.actions * 0.8) * 15502.5)
         # update target pos
         if self.target is not None:
             self.target.set_pos(self.commands, zero_velocity=True)
@@ -193,8 +196,6 @@ class RaceEnv:
         self.episode_length_buf += 1
         self.last_base_pos[:] = self.base_pos[:]
         self.base_pos[:] = self.drone.get_pos()
-        self.rel_pos = self.commands - self.base_pos
-        self.last_rel_pos = self.commands - self.last_base_pos
         self.base_quat[:] = self.drone.get_quat()
         self.base_euler = quat_to_xyz(
             transform_quat_by_quat(self.inv_base_init_quat, self.base_quat), rpy=True, degrees=True
@@ -205,13 +206,13 @@ class RaceEnv:
 
         # pick a new random gate (different from the current one) for envs that reached their target
         self.gate_success, self.gate_crash = self._at_gate()
-        envs_idx = self.gate_success.nonzero(as_tuple=False).reshape((-1,))
-        self.gate_idx[envs_idx] = (self.gate_idx[envs_idx] + 1) % self.num_gates
-        self._resample_commands(envs_idx)
-        self.rel_pos = self.commands - self.base_pos
+        torch.where(self.gate_success, (self.gate_idx + 1) % self.num_gates, self.gate_idx, out=self.gate_idx)
+        self.commands.copy_(self.gates_position[self.gate_idx])
+        torch.sub(self.commands, self.base_pos, out=self.rel_pos)
+        torch.sub(self.commands, self.last_base_pos, out=self.last_rel_pos)
 
         # check termination and reset
-        self.crash_condition = (
+        self.termination_conditions = (
             (torch.abs(self.base_euler[:, 1]) > self.env_cfg["termination_if_pitch_greater_than"])
             | (torch.abs(self.base_euler[:, 0]) > self.env_cfg["termination_if_roll_greater_than"])
             | (torch.abs(self.base_pos[:, 0]) > self.env_cfg["arena_half_x"])
@@ -219,12 +220,12 @@ class RaceEnv:
             | (self.base_pos[:, 2] > self.env_cfg["arena_z_max"])
             | (self.base_pos[:, 2] < self.env_cfg["termination_if_close_to_ground"])
             | self.gate_crash
+            | self.scene.rigid_solver.get_error_envs_mask()
         )
-        self.reset_buf = (self.episode_length_buf > self.max_episode_length) | self.crash_condition
-
-        time_out_idx = (self.episode_length_buf > self.max_episode_length).nonzero(as_tuple=False).reshape((-1,))
-        self.extras["time_outs"] = torch.zeros_like(self.reset_buf, device=gs.device, dtype=gs.tc_float)
-        self.extras["time_outs"][time_out_idx] = 1.0
+        timed_out = self.episode_length_buf > self.max_episode_length
+        self.reset_buf = timed_out | self.termination_conditions
+        self.time_out_buf.copy_(timed_out)
+        self.extras["time_outs"] = self.time_out_buf
 
         self.reset_idx(self.reset_buf.nonzero(as_tuple=False).reshape((-1,)))
 
@@ -310,13 +311,13 @@ class RaceEnv:
         self.extras["episode"] = {}
         for key in self.episode_sums.keys():
             self.extras["episode"]["rew_" + key] = (
-                torch.mean(self.episode_sums[key][envs_idx]).item() / self.env_cfg["episode_length_s"]
+                torch.mean(self.episode_sums[key][envs_idx]) / self.env_cfg["episode_length_s"]
             )
             self.episode_sums[key][envs_idx] = 0.0
 
         self._resample_commands(envs_idx)
-        self.rel_pos = self.commands - self.base_pos
-        self.last_rel_pos = self.commands - self.last_base_pos
+        torch.sub(self.commands, self.base_pos, out=self.rel_pos)
+        torch.sub(self.commands, self.last_base_pos, out=self.last_rel_pos)
 
     def reset(self):
         self.reset_buf[:] = True
@@ -345,5 +346,5 @@ class RaceEnv:
 
     def _reward_crash(self):
         crash_rew = torch.zeros((self.num_envs,), device=gs.device, dtype=gs.tc_float)
-        crash_rew[self.crash_condition] = 1
+        crash_rew[self.termination_conditions] = 1
         return crash_rew

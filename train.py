@@ -140,7 +140,7 @@ def main():
     parser.add_argument("--seed", type=int, default=1)
     args = parser.parse_args()
 
-    gs.init(backend=gs.gpu, precision="32", logging_level="warning", seed=args.seed, performance_mode=False)
+    gs.init(backend=gs.gpu, precision="32", logging_level="warning", seed=args.seed, performance_mode=True)
 
     log_dir = f"logs/{args.exp_name}"
     env_cfg, obs_cfg, reward_cfg, command_cfg = get_cfgs()
