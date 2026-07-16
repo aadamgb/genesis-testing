@@ -2,7 +2,7 @@
 
 <robot name="racer">
 
-  <properties arm="0.109" kf="8.47e-9" km="2.13e-11" thrust2weight="4.17" max_speed_kmh="200" gnd_eff_coeff="11.36859" prop_radius="12.7e-2" drag_coeff_xy="9.1785e-7" drag_coeff_z="10.311e-7" dw_coeff_1="2267.18" dw_coeff_2=".16" dw_coeff_3="-.11" />
+  <properties arm="0.15" kf="8.47e-9" km="2.13e-11" thrust2weight="4.17" max_speed_kmh="200" gnd_eff_coeff="11.36859" prop_radius="12.7e-2" drag_coeff_xy="9.1785e-7" drag_coeff_z="10.311e-7" dw_coeff_1="2267.18" dw_coeff_2=".16" dw_coeff_3="-.11" />
 
   <link name="base_link"> 
 
@@ -13,7 +13,7 @@
     </inertial>
 
     <visual>
-      <origin rpy="0 0 55" xyz="0 0 0"/>
+      <origin rpy="0 0 55" xyz="0 0 0.0"/>
       <geometry>
         <mesh filename="./mesh/frame.stl" scale="0.001 0.001 0.001"/>
       </geometry> 
@@ -23,7 +23,7 @@
     </visual>
 
     <visual>
-      <origin rpy="0 0 55" xyz="0.0948 -0.115 -0.0"/>
+      <origin rpy="0 0 55" xyz="0.106 -0.106 -0.0"/>
       <geometry>
         <mesh filename="./mesh/motor.stl" scale="0.001 0.001 0.001"/>
       </geometry> 
@@ -32,7 +32,7 @@
       </material> 
     </visual>
     <visual>
-      <origin rpy="0 0 55" xyz="-0.0948 0.115 -0.0"/>
+      <origin rpy="0 0 55" xyz="-0.106 0.106 -0.0"/>
       <geometry>
         <mesh filename="./mesh/motor.stl" scale="0.001 0.001 0.001"/>
       </geometry> 
@@ -41,7 +41,7 @@
       </material> 
     </visual>
     <visual>
-      <origin rpy="0 0 55" xyz="0.0948 0.115 -0.0"/>
+      <origin rpy="0 0 55" xyz="0.106 0.106 -0.0"/>
       <geometry>
         <mesh filename="./mesh/motor.stl" scale="0.001 0.001 0.001"/>
       </geometry> 
@@ -50,7 +50,7 @@
       </material> 
     </visual>
     <visual>
-      <origin rpy="0 0 55" xyz="-0.0948 -0.115 -0.0"/>
+      <origin rpy="0 0 55" xyz="-0.106 -0.106 -0.0"/>
       <geometry>
         <mesh filename="./mesh/motor.stl" scale="0.001 0.001 0.001"/>
       </geometry> 
@@ -62,28 +62,28 @@
 
 <!-- Added 4 Cylindrical Legs -->
     <visual>
-      <origin rpy="0 0 0" xyz="0.0948 -0.115 -0.12"/>
+      <origin rpy="0 0 0" xyz="0.106 -0.106 -0.12"/>
       <geometry>
         <cylinder radius="0.015" length="0.06"/>
       </geometry>
       <material name="red"><color rgba="1 0 0 1"/></material>
     </visual>
     <visual>
-      <origin rpy="0 0 0" xyz="-0.0948 0.115 -0.12"/>
+      <origin rpy="0 0 0" xyz="-0.106 0.106 -0.12"/>
       <geometry>
         <cylinder radius="0.015" length="0.06"/>
       </geometry>
       <material name="black"><color rgba="0 0 0 1"/></material>
     </visual>
     <visual>
-      <origin rpy="0 0 0" xyz="0.0948 0.115 -0.12"/>
+      <origin rpy="0 0 0" xyz="0.106 0.106 -0.12"/>
       <geometry>
         <cylinder radius="0.015" length="0.06"/>
       </geometry>
       <material name="red"><color rgba="1 0 0 1"/></material>
     </visual>
     <visual>
-      <origin rpy="0 0 0" xyz="-0.0948 -0.115 -0.12"/>
+      <origin rpy="0 0 0" xyz="-0.106 -0.106 -0.12"/>
       <geometry>
         <cylinder radius="0.015" length="0.06"/>
       </geometry>
@@ -102,12 +102,12 @@
 
   <link name="prop0_link">
     <inertial>
-      <origin rpy="0 0 0" xyz="0.0850 0.0675 0"/>
+      <origin rpy="0 0 0" xyz="0.106 -0.106 0"/>
       <mass value="0"/>
       <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
     </inertial>
     <visual>
-      <origin rpy="0 0 0" xyz="0.0948 -0.115 -0.055"/>
+      <origin rpy="0 0 0" xyz="0.106 -0.106 -0.055"/>
       <geometry>
           <mesh filename="./mesh/prop.dae"  scale="0.4 0.4 0.4"/>
       </geometry> 
@@ -120,12 +120,12 @@
 
   <link name="prop1_link">
     <inertial>
-      <origin rpy="0 0 0" xyz="-0.0850 0.0675 0"/>
+      <origin rpy="0 0 0" xyz="-0.106 0.106 0"/>
       <mass value="0"/>
       <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
     </inertial>
     <visual>
-      <origin rpy="0 0 0" xyz="-0.0948 0.115 -0.055"/>
+      <origin rpy="0 0 0" xyz="-0.106 0.106 -0.055"/>
       <geometry>
           <mesh filename="./mesh/prop.dae"  scale="0.4 0.4 0.4"/>
       </geometry> 
@@ -138,12 +138,12 @@
 
   <link name="prop2_link">
     <inertial>
-      <origin rpy="0 0 0" xyz="-0.085 -0.0675 0"/>
+      <origin rpy="0 0 0" xyz="0.106 0.106 0"/>
       <mass value="0"/>
       <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
     </inertial>
     <visual>
-      <origin rpy="0 0 0" xyz="0.0948 0.115 -0.055"/>
+      <origin rpy="0 0 0" xyz="0.106 0.106 -0.055"/>
       <geometry>
           <mesh filename="./mesh/prop.dae"  scale="0.4 0.4 0.4"/>
       </geometry>
@@ -156,12 +156,12 @@
 
   <link name="prop3_link">
     <inertial>
-      <origin rpy="0 0 0" xyz="0.085 -0.0675 0"/>
+      <origin rpy="0 0 0" xyz="-0.106 -0.106 0"/>
       <mass value="0"/>
       <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
     </inertial>
     <visual>
-      <origin rpy="0 0 0" xyz="-0.0948 -0.115 -0.055"/>
+      <origin rpy="0 0 0" xyz="-0.106 -0.106 -0.055"/>
       <geometry>
           <mesh filename="./mesh/prop.dae"  scale="0.4 0.4 0.4"/>
       </geometry>
