@@ -9,9 +9,11 @@ from genesis.utils.geom import (
     transform_by_quat,
     inv_quat,
     transform_quat_by_quat,
-    xyz_to_quat, 
+    xyz_to_quat,
     quat_to_R
 )
+
+from src.controller import build_controller
 
 
 class RaceEnv:
@@ -37,7 +39,7 @@ class RaceEnv:
 
         # create scene
         self.scene = gs.Scene(
-            sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
+            sim_options=gs.options.SimOptions(dt=self.dt, substeps=5),
             viewer_options=gs.options.ViewerOptions(
                 max_FPS=env_cfg["max_visualize_FPS"],
                 camera_pos=(3.0, 0.0, 3.0),
@@ -47,6 +49,7 @@ class RaceEnv:
             vis_options=gs.options.VisOptions(
                 show_world_frame=True,
                 world_frame_size=0.5,
+                show_link_frame=True,
                 lights=[gs.options.vis.DirectionalLight(dir=(0.2, 0.4, -1), color=(1.0, 1.0, 1.0), intensity=5.0)],
                 rendered_envs_idx=list(range(self.rendered_env_num))
                 ),
@@ -69,7 +72,7 @@ class RaceEnv:
                 self.scene.add_entity(
                     morph=gs.morphs.Mesh(
                         file="misc/gate.obj",
-                        euler=(90.0 + gate_rpy[0], gate_rpy[1], gate_rpy[2]),
+                        euler=( gate_rpy[0], gate_rpy[1], gate_rpy[2]),
                         pos=tuple(gate_pos),
                         fixed=True,
                         collision=False,
@@ -81,19 +84,19 @@ class RaceEnv:
                     ),
                 )
             # sphere marking the current target gate
-            self.target = self.scene.add_entity(
-                morph=gs.morphs.Mesh(
-                    file="meshes/sphere.obj",
-                    scale=0.1,
-                    fixed=False,
-                    collision=False,
-                ),
-                surface=gs.surfaces.Rough(
-                    diffuse_texture=gs.textures.ColorTexture(
-                        color=(1.0, 1.0, 0.0),
-                    ),
-                ),
-            )
+            # self.target = self.scene.add_entity(
+            #     morph=gs.morphs.Mesh(
+            #         file="meshes/sphere.obj",
+            #         scale=0.1,
+            #         fixed=False,
+            #         collision=False,
+            #     ),
+            #     surface=gs.surfaces.Rough(
+            #         diffuse_texture=gs.textures.ColorTexture(
+            #             color=(1.0, 1.0, 0.0),
+            #         ),
+            #     ),
+            # )
         else:
             self.target = None
 
@@ -120,6 +123,9 @@ class RaceEnv:
 
         # build scene
         self.scene.build(n_envs=num_envs)
+        self.controller = build_controller(
+            self.env_cfg["controller_type"], drone=self.drone, num_envs=self.num_envs, dt=self.dt, cfg=self.env_cfg
+        )
 
         # prepare reward functions and multiply reward scales by dt
         self.reward_functions, self.episode_sums = dict(), dict()
@@ -186,10 +192,11 @@ class RaceEnv:
 
         # 14468 is hover rpm
         # self.drone.set_propellers_rpm((1 + self.actions * 0.8) * 14468.429183500699)
-        self.drone.set_propellers_rpm((1 + self.actions * 0.8) * 15502.5)
+        # self.drone.set_propellers_rpm((1 + self.actions * 0.8) * 15502.5)
+        self.drone.set_propellers_rpm(self.controller.update(self.actions))
         # update target pos
-        if self.target is not None:
-            self.target.set_pos(self.commands, zero_velocity=True)
+        # if self.target is not None:
+        #     self.target.set_pos(self.commands, zero_velocity=True)
         self.scene.step()
 
         # update buffers
@@ -243,6 +250,7 @@ class RaceEnv:
 
         return self.get_observations(), self.rew_buf, self.reset_buf, self.extras
 
+    # ------------ Get Observation ----------------
     def _update_observation(self):
         self.obs_buf = torch.cat(
             [
@@ -258,6 +266,7 @@ class RaceEnv:
     def get_observations(self):
         return TensorDict({"policy": self.obs_buf}, batch_size=[self.num_envs])
     
+    # ------------ Reset Environment ----------------
     def _sample_spawn(self, envs_idx):
         """Sample poses behind each env's assigned gate. envs_idx: index tensor."""
         n = len(envs_idx)
@@ -279,7 +288,11 @@ class RaceEnv:
         pos = c + torch.einsum("nij,nj->ni", R, local)
         pos[:, 2] = pos[:, 2].clamp(min=self.env_cfg["spawn_min_height"])
 
-        yaw = u(-math.pi, math.pi)
+        fwd = R[:, :, 1]                                
+        gate_yaw = torch.atan2(fwd[:, 1], fwd[:, 0])      
+        yaw = gate_yaw - math.pi / 2 + u(-math.pi/6, math.pi/6)
+        yaw = torch.atan2(torch.sin(yaw), torch.cos(yaw))  
+
         rpy = torch.stack([torch.zeros_like(yaw), torch.zeros_like(yaw), yaw], dim=-1)
         quat = xyz_to_quat(rpy, rpy=True, degrees=False)
 
@@ -306,6 +319,7 @@ class RaceEnv:
         self.last_actions[envs_idx] = 0.0
         self.episode_length_buf[envs_idx] = 0
         self.reset_buf[envs_idx] = True
+        self.controller.reset_idx(envs_idx)
 
         # fill extras
         self.extras["episode"] = {}

@@ -112,7 +112,7 @@ HOVER_RPM = 15502.5
 actions = torch.tensor([0.0, 0.0, 0.0, 0.0], device=gs.device, dtype=gs.tc_float)
 intruder_act = torch.tensor([0.0, 0.0, 0.03, 0.03], device=gs.device, dtype=gs.tc_float)
 for i in range(steps):
-    a300_1.set_propellers_rpm((1 + actions * 0.8) * HOVER_RPM)
-    a300_2.set_propellers_rpm((1 + actions * 0.8) * HOVER_RPM)
+    a300_1.set_propellers_rpm((1 + actions * 0.8) * 8120.65)
+    a300_2.set_propellers_rpm((1 + actions * 0.8) * 8120.65)
     intruder.set_propellers_rpm((1 + intruder_act * 0.8) * HOVER_RPM)
     scene.step()

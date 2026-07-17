@@ -22,3 +22,8 @@ gates:
 
   - position: [0.0, -3.0, 1.5]    # Gate8
     rpy: [0.0, 0.0, 90.0]
+
+limits:
+  - arena_half_x: 6.0
+  - arena_half_y: 6.0
+  - arena_z_max: 4.0

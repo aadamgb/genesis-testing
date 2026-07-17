@@ -14,14 +14,16 @@ from rsl_rl.runners import OnPolicyRunner
 
 import genesis as gs
 
-from src.env_camera import RaceEnv
+# from src.env_camera import RaceEnv
+from src.env import RaceEnv
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="drone-hovering")
     parser.add_argument("-c", "--ckpt", type=int, default=300)
-    parser.add_argument("-t", "--time", type=int, default=15)
+    parser.add_argument("-t", "--time", type=int, default=20)
+    parser.add_argument("-cm", "--control_mode", type=str, default="SRT")
     parser.add_argument("--record", action="store_true", default=False)
     args = parser.parse_args()
 
@@ -32,14 +34,11 @@ def main():
         env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg = pickle.load(f)
     reward_cfg["reward_scales"] = {}
 
-    # visualize the target
     env_cfg["visualize_target"] = True
-    # for video recording
     env_cfg["visualize_camera"] = args.record
-    # set the max FPS for visualization
     env_cfg["max_visualize_FPS"] = 60
-    # set evaluation time
-    env_cfg["episode_length_s"] = args.time 
+    env_cfg["episode_length_s"] = args.time
+    env_cfg["controller_type"] = args.control_mode 
 
     env = RaceEnv(
         num_envs=1,
@@ -73,12 +72,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-"""
-# evaluation
-python examples/drone/hover_eval.py --ckpt 300
-
-# Note
-If you experience slow performance or encounter other issues
-during evaluation, try removing the --record option.
-"""

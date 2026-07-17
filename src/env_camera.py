@@ -47,6 +47,7 @@ class RaceEnv:
             vis_options=gs.options.VisOptions(
                 show_world_frame=True,
                 world_frame_size=0.5,
+                show_link_frame=True,
                 lights=[gs.options.vis.DirectionalLight(dir=(0.2, 0.4, -1), color=(1.0, 1.0, 1.0), intensity=5.0)],
                 rendered_envs_idx=list(range(self.rendered_env_num))
                 ),
@@ -69,7 +70,7 @@ class RaceEnv:
                 self.scene.add_entity(
                     morph=gs.morphs.Mesh(
                         file="misc/gate.obj",
-                        euler=(90.0 + gate_rpy[0], gate_rpy[1], gate_rpy[2]),
+                        euler=(gate_rpy[0], gate_rpy[1], gate_rpy[2]),
                         pos=tuple(gate_pos),
                         fixed=True,
                         collision=False,
@@ -125,12 +126,12 @@ class RaceEnv:
             import numpy as np
             """Body -> camera. Genesis cameras are OpenGL: -z forward, +y up, +x right."""
             # camera axes as columns, expressed in body frame (body: +x fwd, +z up)
-            R = np.array([[0.0,  0.0, 1.0],    # x_cam = -body_y (right)
-                        [1.0, 0.0,  0.0],    # y_cam = +body_z (up)
-                        [0.0,  1.0,  0.0]])   # z_cam = -body_x (back)
-            # R = np.array([[0.0,  0.0, -1.0],    # x_cam = -body_y (right)
-            #             [-1.0, 0.0,  0.0],    # y_cam = +body_z (up)
+            # R = np.array([[0.0,  0.0, 1.0],    # x_cam = -body_y (right)
+            #             [1.0, 0.0,  0.0],    # y_cam = +body_z (up)
             #             [0.0,  1.0,  0.0]])   # z_cam = -body_x (back)
+            R = np.array([[0.0,  0.0, -1.0],    # x_cam = -body_y (right)
+                        [-1.0, 0.0,  0.0],    # y_cam = +body_z (up)
+                        [0.0,  1.0,  0.0]])   # z_cam = -body_x (back)
             t = np.deg2rad(tilt_deg)            # positive = tilt up
             Rx = np.array([[1, 0, 0],
                         [0, np.cos(t), -np.sin(t)],
@@ -314,6 +315,7 @@ class RaceEnv:
             return
         
         self.gate_idx[envs_idx] = torch.randint(0, self.num_gates, (len(envs_idx),), device=gs.device)
+        # self.gate_idx[envs_idx] = 0
         pos, quat = self._sample_spawn(envs_idx)
 
         # reset base
