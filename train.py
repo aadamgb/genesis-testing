@@ -2,65 +2,15 @@ import argparse
 import os
 import pickle
 import shutil
-from importlib import metadata
 
+import torch
 import yaml
 
-try:
-    if int(metadata.version("rsl-rl-lib").split(".")[0]) < 5:
-        raise ImportError
-except (metadata.PackageNotFoundError, ImportError) as e:
-    raise ImportError("Please install 'rsl-rl-lib>=5.0.0'.") from e
-from rsl_rl.runners import OnPolicyRunner
-
 import genesis as gs
+from stable_baselines3 import PPO
+from stable_baselines3.common.callbacks import CheckpointCallback
 
-from src.env import RaceEnv
-
-
-def get_train_cfg(exp_name):
-    train_cfg_dict = {
-        "algorithm": {
-            "class_name": "PPO",
-            "clip_param": 0.2,
-            "desired_kl": 0.01,
-            "entropy_coef": 0.004,
-            "gamma": 0.99,
-            "lam": 0.95,
-            "learning_rate": 0.0003,
-            "max_grad_norm": 1.0,
-            "num_learning_epochs": 5,
-            "num_mini_batches": 4,
-            "schedule": "adaptive",
-            "use_clipped_value_loss": True,
-            "value_loss_coef": 1.0,
-        },
-        "actor": {
-            "class_name": "MLPModel",
-            "hidden_dims": [128, 128],
-            "activation": "tanh",
-            "distribution_cfg": {
-                "class_name": "GaussianDistribution",
-                "init_std": 1.0,
-                "std_type": "scalar",
-            },
-        },
-        "critic": {
-            "class_name": "MLPModel",
-            "hidden_dims": [128, 128],
-            "activation": "tanh",
-        },
-        "obs_groups": {
-            "actor": ["policy"],
-            "critic": ["policy"],
-        },
-        "num_steps_per_env": 100,
-        "save_interval": 100,
-        "run_name": exp_name,
-        "logger": "tensorboard",
-    }
-
-    return train_cfg_dict
+from src.env import RaceEnv   # the SB3-refactored version
 
 
 def load_track(track_path):
@@ -69,30 +19,29 @@ def load_track(track_path):
     return {
         "gates_pos": [g["position"] for g in track["gates"]],
         "gates_rpy": [g["rpy"] for g in track["gates"]],
-        "limits": {k: v for d in track["limits"] for k, v in d.items()}
+        "limits": {k: v for d in track["limits"] for k, v in d.items()},
     }
 
-def get_cfgs(cm):
 
+def get_cfgs(cm):
     track = load_track("misc/fig8.yaml")
 
     env_cfg = {
         "num_actions": 4,
 
         # controller
-        "controller_type": cm,  
-        # "hover_rpm": 15502.5,
+        "controller_type": cm,
         "hover_rpm": 8120.65,
         "action_scale": 0.8,
-        "ctbr_mixer": [             
-            [ 1,   1,   1,   1],
-            [-1,   1,   1,  -1],
-            [-1,   1,  -1,   1],
-            [-1,  -1,   1,   1],
+        "ctbr_mixer": [
+            [ 1,  1,  1,  1],
+            [-1,  1,  1, -1],
+            [-1,  1, -1,  1],
+            [-1, -1,  1,  1],
         ],
 
         # termination
-        "termination_if_roll_greater_than": 180,  # degree
+        "termination_if_roll_greater_than": 180,
         "termination_if_pitch_greater_than": 180,
         "termination_if_close_to_ground": 0.1,
         "arena_half_x": track["limits"]["arena_half_x"],
@@ -111,9 +60,9 @@ def get_cfgs(cm):
         "clip_actions": 1.0,
 
         # spawn
-        "spawn_back_dist": [0.8, 1.2],   # metres behind the gate plane
-        "spawn_lateral": 0.4,            # ± in gate x
-        "spawn_vertical": 0.3,           # ± in gate z
+        "spawn_back_dist": [0.8, 1.2],
+        "spawn_lateral": 0.4,
+        "spawn_vertical": 0.3,
         "spawn_min_height": 0.5,
 
         # visualization
@@ -125,7 +74,7 @@ def get_cfgs(cm):
     obs_cfg = {
         "obs_scales": {
             "rel_pos": 1 / 3.0,
-            "lin_vel": 1 / 3.0,
+            "lin_vel": 1 / 10.0,
             "ang_vel": 1 / 3.14159,
         },
     }
@@ -140,7 +89,7 @@ def get_cfgs(cm):
             "crash": -10.0,
         },
     }
-    
+
     command_cfg = {
         "num_commands": 3,
         "gates_position": track["gates_pos"],
@@ -152,19 +101,22 @@ def get_cfgs(cm):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-e", "--exp_name", type=str, default="test")
+    parser.add_argument("-e", "--exp_name", type=str, default="sb3_test")
     parser.add_argument("-v", "--vis", action="store_true", default=False)
     parser.add_argument("-B", "--num_envs", type=int, default=8192)
-    parser.add_argument("-m","--max_iterations", type=int, default=301)
+    parser.add_argument("-t", "--total_timesteps", type=int, default=100_000_000)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("-cm", "--control_mode", type=str, default="SRT")
+    parser.add_argument("--n_steps", type=int, default=100)
     args = parser.parse_args()
 
-    gs.init(backend=gs.gpu, precision="32", logging_level="warning", seed=args.seed, performance_mode=True)
+    gs.init(backend=gs.gpu, precision="32", logging_level="warning",
+            seed=args.seed, performance_mode=True)
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
 
     log_dir = f"logs/{args.exp_name}"
     env_cfg, obs_cfg, reward_cfg, command_cfg = get_cfgs(args.control_mode)
-    train_cfg = get_train_cfg(args.exp_name)
 
     if os.path.exists(log_dir):
         shutil.rmtree(log_dir)
@@ -173,8 +125,8 @@ def main():
     if args.vis:
         env_cfg["visualize_target"] = True
 
-    with open(f"{log_dir}/cfgs.pkl", "wb") as f:
-        pickle.dump([env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg], f)
+    # with open(f"{log_dir}/cfgs.pkl", "wb") as f:
+    #     pickle.dump([env_cfg, obs_cfg, reward_cfg, command_cfg], f)
 
     env = RaceEnv(
         num_envs=args.num_envs,
@@ -185,15 +137,52 @@ def main():
         show_viewer=args.vis,
     )
 
-    runner = OnPolicyRunner(env, train_cfg, log_dir, device=gs.device)
+    # rollout buffer = n_steps * num_envs; 4 minibatches per epoch (rsl-rl parity)
+    rollout_size = args.n_steps * args.num_envs
+    batch_size = rollout_size // 4
 
-    runner.learn(num_learning_iterations=args.max_iterations, init_at_random_ep_len=True)
+    policy_kwargs = dict(
+        activation_fn=torch.nn.Tanh,
+        net_arch=dict(pi=[128, 128], vf=[128, 128]),
+        log_std_init=0.0,   # exp(0) = 1.0 -> matches rsl-rl init_std=1.0
+    )
+
+    model = PPO(
+        "MlpPolicy",
+        env,
+        policy_kwargs=policy_kwargs,
+        verbose=1,
+        device=device,
+        seed=args.seed,
+        n_steps=args.n_steps,
+        batch_size=batch_size,
+        n_epochs=5,
+        gamma=0.99,
+        gae_lambda=0.95,
+        clip_range=0.2,
+        ent_coef=0.004,
+        vf_coef=1.0,
+        max_grad_norm=1.0,
+        learning_rate=3e-4,
+        target_kl=None,
+        tensorboard_log=log_dir,
+    )
+
+    # checkpoint_callback = CheckpointCallback(
+    #     save_freq=max(1_000_000 // args.num_envs, 1),  # save_freq is per-env steps
+    #     save_path=log_dir,
+    #     name_prefix=args.exp_name,
+    # )
+
+    # model.learn(total_timesteps=args.total_timesteps, callback=checkpoint_callback)
+    model.learn(total_timesteps=args.total_timesteps)
+    model.save(f"logs/fig8/sb3/sb3_final")
+    env.close()
 
 
 if __name__ == "__main__":
     main()
 
 """
-# training
-python examples/drone/hover_train.py
+python train_sb3.py -e srt_run1 -cm SRT -B 1024
 """
