@@ -28,7 +28,11 @@ scene = gs.Scene(
         camera_fov=40,
         max_FPS=60,
     ),
-    vis_options=gs.options.VisOptions(show_world_frame=True, world_frame_size=0.7),
+    vis_options=gs.options.VisOptions(
+        show_world_frame=True, 
+        world_frame_size=0.7,
+        # show_link_frame=True,
+        ),
     show_viewer=True,
 )
 
@@ -59,10 +63,20 @@ rod = scene.add_entity(
         radius=0.01,
         height= L + 0.1,
         euler=(0, 90, 0),
-        pos=(0, 0, Z - 0.16),
+        pos=(0, 0, Z - 0.08),
     ),
     material=rigid_mat,
     surface=gs.surfaces.Default(color=(0.2, 0.4, 0.8, 1.0)),
+)
+
+rod_cg = scene.add_entity(
+    morph=gs.morphs.Sphere(
+        radius=0.015,
+        collision=False,
+        fixed=False,
+        pos=(0, 0, Z - 0.08),
+    ),
+    surface=gs.surfaces.Default(color=(0.8, 0.4, 0.8, 1.0)),
 )
 
 net = scene.add_entity(
@@ -70,7 +84,7 @@ net = scene.add_entity(
     morph=gs.morphs.Mesh(
         file="misc/net.obj",
         scale=0.5,
-        pos=(0.0, 0.0, 0.82),
+        pos=(0.0, 0.0, 0.9),
         euler=(180.0, 0.0, 0.0),
     ),
     surface=gs.surfaces.Default(
@@ -86,17 +100,18 @@ intruder = scene.add_entity(
     material=rigid_mat,
 )
 
-
-
 scene.build(n_envs=0)
 
 solver  = scene.sim.rigid_solver
-tip1    = bambi_1.get_link("segment_10_cylinder")
-tip2    = bambi_2.get_link("segment_10_cylinder")
+tip1    = bambi_1.get_link("segment_5_cylinder")
+tip2    = bambi_2.get_link("segment_5_cylinder")
 rod_lnk = rod.base_link
 
 solver.add_weld_constraint(tip1.idx, rod_lnk.idx)
 solver.add_weld_constraint(tip2.idx, rod_lnk.idx)
+
+# rod cg visualization
+solver.add_weld_constraint(rod_lnk.idx, rod_cg.base_link.idx)
 
 P = net.get_particles_pos()                                
 top = torch.where(P[:, 2] > P[:, 2].max() - 0.02)[0]      
@@ -113,4 +128,5 @@ for i in range(steps):
     # bambi_2.set_propellers_rpm((1 + actions * 0.8) * HOVER_RPM )
     bambi_2.set_propellers_rpm((1 + intruder_act * 0.8) * HOVER_RPM )
     intruder.set_propellers_rpm((1 + intruder_act * 0.8) * 15502.5)
+    # rod_cg.set_pos(rod.get_pos())
     scene.step()

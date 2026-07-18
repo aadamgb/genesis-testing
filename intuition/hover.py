@@ -6,7 +6,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("-t", "--time", type=int, default=15)
 args = parser.parse_args()
 
-dt = 0.005
+dt = 0.01
 steps = int(args.time / dt)
 gs.init(backend=gs.cuda)
 scene = gs.Scene(
@@ -26,7 +26,7 @@ scene = gs.Scene(
 
 plane = scene.add_entity(gs.morphs.Plane())
 racer = scene.add_entity(gs.morphs.Drone(file="urdf/drones/racer.urdf"))
-a300 = scene.add_entity(gs.morphs.Drone(file="misc/urdf/a300.urdf",
+a300 = scene.add_entity(gs.morphs.Drone(file="misc/urdf/bros300.urdf",
                                         propellers_spin=(-1, -1, 1, 1)))
 # crazy_fly = scene.add_entity(gs.morphs.Drone(file="urdf/drones/cf2x.urdf"))
 bambi = scene.add_entity(gs.morphs.Drone(file="misc/urdf/bambi.urdf"))

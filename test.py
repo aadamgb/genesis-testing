@@ -14,15 +14,14 @@ from rsl_rl.runners import OnPolicyRunner
 
 import genesis as gs
 
-# from src.env_camera import RaceEnv
-from src.env import RaceEnv
+from src.env import SprindEnv
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-e", "--exp_name", type=str, default="drone-hovering")
+    parser.add_argument("-e", "--exp_name", type=str, default="test")
     parser.add_argument("-c", "--ckpt", type=int, default=300)
-    parser.add_argument("-t", "--time", type=int, default=20)
+    parser.add_argument("-t", "--time", type=int, default=30)
     parser.add_argument("-cm", "--control_mode", type=str, default="SRT")
     parser.add_argument("--record", action="store_true", default=False)
     args = parser.parse_args()
@@ -40,7 +39,7 @@ def main():
     env_cfg["episode_length_s"] = args.time
     env_cfg["controller_type"] = args.control_mode 
 
-    env = RaceEnv(
+    env = SprindEnv(
         num_envs=1,
         env_cfg=env_cfg,
         obs_cfg=obs_cfg,

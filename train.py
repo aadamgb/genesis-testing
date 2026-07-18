@@ -15,7 +15,7 @@ from rsl_rl.runners import OnPolicyRunner
 
 import genesis as gs
 
-from src.env import RaceEnv
+from src.env import SprindEnv
 
 
 def get_train_cfg(exp_name):
@@ -63,25 +63,14 @@ def get_train_cfg(exp_name):
     return train_cfg_dict
 
 
-def load_track(track_path):
-    with open(track_path, "r") as f:
-        track = yaml.safe_load(f)
-    return {
-        "gates_pos": [g["position"] for g in track["gates"]],
-        "gates_rpy": [g["rpy"] for g in track["gates"]],
-        "limits": {k: v for d in track["limits"] for k, v in d.items()}
-    }
 
 def get_cfgs(cm):
 
-    track = load_track("misc/fig8.yaml")
-
     env_cfg = {
-        "num_actions": 4,
+        "num_actions": 8,
 
         # controller
         "controller_type": cm,  
-        # "hover_rpm": 15502.5,
         "hover_rpm": 8120.65,
         "action_scale": 0.8,
         "ctbr_mixer": [             
@@ -92,15 +81,15 @@ def get_cfgs(cm):
         ],
 
         # termination
-        "termination_if_roll_greater_than": 180,  # degree
-        "termination_if_pitch_greater_than": 180,
+        "termination_if_roll_greater_than": 60,  # degree
+        "termination_if_pitch_greater_than": 60,
         "termination_if_close_to_ground": 0.1,
-        "arena_half_x": track["limits"]["arena_half_x"],
-        "arena_half_y": track["limits"]["arena_half_y"],
-        "arena_z_max": track["limits"]["arena_z_max"],
+        "termination_if_x_greater_than": 8.0,
+        "termination_if_y_greater_than": 8.0,
+        "termination_if_z_greater_than": 4.0,
 
         # base pose
-        "base_init_pos": [-1.5, -2.5, 1.0],
+        # "base_init_pos": [-1.5, -2.5, 1.0],
         "base_init_quat": [1.0, 0.0, 0.0, 0.0],
         "episode_length_s": 12.0,
         "at_target_threshold": 0.1,
@@ -124,9 +113,9 @@ def get_cfgs(cm):
 
     obs_cfg = {
         "obs_scales": {
-            "rel_pos": 1 / 3.0,
-            "lin_vel": 1 / 3.0,
-            "ang_vel": 1 / 3.14159,
+            "rel_pos": 1 / 5.0,
+            "lin_vel": 1 / 5.0,
+            "ang_vel": 1 / 10.0,
         },
     }
 
@@ -135,16 +124,17 @@ def get_cfgs(cm):
         "reward_scales": {
             "progress": 10.0,
             "smooth": -1e-4,
-            "yaw": 0.0,
-            "angular": -2e-4,
+            # "yaw": 0.0,
+            "angular": -1e-3,
             "crash": -10.0,
         },
     }
     
     command_cfg = {
         "num_commands": 3,
-        "gates_position": track["gates_pos"],
-        "gates_rpy": track["gates_rpy"],
+        "pos_x_range": [-1.0, 1.0],
+        "pos_y_range": [-1.0, 1.0],
+        "pos_z_range": [1.0, 1.0],
     }
 
     return env_cfg, obs_cfg, reward_cfg, command_cfg
@@ -176,7 +166,7 @@ def main():
     with open(f"{log_dir}/cfgs.pkl", "wb") as f:
         pickle.dump([env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg], f)
 
-    env = RaceEnv(
+    env = SprindEnv(
         num_envs=args.num_envs,
         env_cfg=env_cfg,
         obs_cfg=obs_cfg,
