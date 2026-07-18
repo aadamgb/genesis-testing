@@ -2,7 +2,6 @@ import argparse
 import os
 import pickle
 from importlib import metadata
-
 import torch
 
 try:
@@ -14,8 +13,8 @@ from rsl_rl.runners import OnPolicyRunner
 
 import genesis as gs
 
-# from src.env_camera import RaceEnv
-from src.env import RaceEnv
+from src.env_camera import RaceEnv
+# from src.env import RaceEnv
 
 
 def main():
@@ -69,6 +68,25 @@ def main():
                 actions = policy(obs_dict)
                 obs_dict, rews, dones, infos = env.step(actions)
 
+        ## to save depth video...
+        # import numpy as np
+        # import imageio
+        # if args.record:
+        #     depth_frames = []
+        #     for _ in range(max_sim_step):
+        #         actions = policy(obs_dict)
+        #         obs_dict, rews, dones, infos = env.step(actions)
+        #         out = env.fpv_cam.render(rgb=False, depth=True)
+        #         depth = out[1] if isinstance(out, (tuple, list)) else out   # render returns (rgb, depth, ...)
+        #         depth_frames.append(np.asarray(depth).squeeze())
+
+        #     depth = np.stack(depth_frames).astype(np.float32)
+        #     finite = depth[np.isfinite(depth)]
+        #     lo, hi = np.percentile(finite, 1), np.percentile(finite, 99)   # clip outliers/inf background
+        #     depth = np.clip((depth - lo) / (hi - lo + 1e-8), 0, 1)
+        #     depth = 1.0 - depth
+        #     depth_u8 = (depth * 255).astype(np.uint8)                       # (T, H, W)
+        #     imageio.mimsave("depth.mp4", depth_u8, fps=env_cfg["max_visualize_FPS"])
 
 if __name__ == "__main__":
     main()

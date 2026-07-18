@@ -190,13 +190,8 @@ class RaceEnv:
     def step(self, actions):
         torch.clamp(actions, -self.env_cfg["clip_actions"], self.env_cfg["clip_actions"], out=self.actions)
 
-        # 14468 is hover rpm
-        # self.drone.set_propellers_rpm((1 + self.actions * 0.8) * 14468.429183500699)
-        # self.drone.set_propellers_rpm((1 + self.actions * 0.8) * 15502.5)
         self.drone.set_propellers_rpm(self.controller.update(self.actions))
-        # update target pos
-        # if self.target is not None:
-        #     self.target.set_pos(self.commands, zero_velocity=True)
+
         self.scene.step()
 
         # update buffers

@@ -12,7 +12,7 @@ from genesis.utils.geom import (
     xyz_to_quat, 
     quat_to_R
 )
-
+from src.controller import build_controller
 
 class RaceEnv:
     def __init__(self, num_envs, env_cfg, obs_cfg, reward_cfg, command_cfg, show_viewer=False):
@@ -142,6 +142,9 @@ class RaceEnv:
             return T
         # build scene
         self.scene.build(n_envs=num_envs)
+        self.controller = build_controller(
+            self.env_cfg["controller_type"], drone=self.drone, num_envs=self.num_envs, dt=self.dt, cfg=self.env_cfg
+        )
         self.fpv_cam.attach(self.drone.base_link, fpv_offset_T())
 
         # prepare reward functions and multiply reward scales by dt
@@ -184,12 +187,6 @@ class RaceEnv:
     def _resample_commands(self, envs_idx):
         self.commands[envs_idx] = self.gates_position[self.gate_idx[envs_idx]]
 
-    # def _at_target(self):
-    #     return (
-    #         (torch.norm(self.rel_pos, dim=1) < self.env_cfg["at_target_threshold"])
-    #         .nonzero(as_tuple=False)
-    #         .reshape((-1,))
-    #     )
     
     def _at_gate(self):
         R = self.gates_R[self.gate_idx]                       
@@ -206,15 +203,9 @@ class RaceEnv:
 
     def step(self, actions):
         self.fpv_cam.move_to_attach()
-        self.fpv_cam.render(rgb=True, depth=True)
+        self.fpv_cam.render(rgb=False, depth=True)
         torch.clamp(actions, -self.env_cfg["clip_actions"], self.env_cfg["clip_actions"], out=self.actions)
-
-        # 14468 is hover rpm
-        # self.drone.set_propellers_rpm((1 + self.actions * 0.8) * 14468.429183500699)
-        self.drone.set_propellers_rpm((1 + self.actions * 0.8) * 15502.5)
-        # update target pos
-        if self.target is not None:
-            self.target.set_pos(self.commands, zero_velocity=True)
+        self.drone.set_propellers_rpm(self.controller.update(self.actions))
         self.scene.step()
 
         # update buffers
