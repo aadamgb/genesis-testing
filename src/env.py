@@ -93,8 +93,8 @@ class SprindEnv:
         # add camera
         if self.env_cfg["visualize_camera"]:
             self.cam = self.scene.add_camera(
-                # res=(640, 480),
-                res=(1920, 1080),
+                res=(640, 480),
+                # res=(1920, 1080),
                 pos=(0.0, 4.5, 2.5),
                 lookat=(0, 0, 0.5),
                 fov=30,
@@ -135,38 +135,41 @@ class SprindEnv:
                 height= L + 0.1,
                 euler=(0, 90, 0),
                 pos=self.rod_init_pos,
-                # collision=False,
+                collision=False,
             ),
             material=gs.materials.Rigid(needs_coup=True, coup_friction=0.0),
-            # surface=gs.surfaces.Default(color=(0.2, 0.4, 0.8, 1.0)),
             surface=gs.surfaces.Default(color=(0.0, 0.0, 0.0, 1.0)),
         )
 
-        self.rod_cg = self.scene.add_entity(
-            morph=gs.morphs.Sphere(
-                radius=0.015,
-                collision=False,
-                fixed=False,
-                pos=(0, 0, Z - 0.08),
-            ),
-            surface=gs.surfaces.Default(color=(1.0, 0.2, 0.2, 1.0)),
-        )
-        self.net = self.scene.add_entity(
-            material=gs.materials.PBD.Cloth(),
-            morph=gs.morphs.Mesh(
-                file="misc/net.obj",
-                scale=0.5,
-                pos=(0.0, 0.0, 0.9),
-                euler=(180.0, 0.0, 0.0),
-            ),
-            surface=gs.surfaces.Default(
-                color=(0.2, 0.6, 0.2, 1.0),
-            ),
-        )
+        # self.rod_cg = self.scene.add_entity(
+        #     morph=gs.morphs.Sphere(
+        #         radius=0.015,
+        #         collision=False,
+        #         fixed=False,
+        #         pos=(0, 0, Z - 0.08),
+        #     ),
+        #     surface=gs.surfaces.Default(color=(1.0, 0.2, 0.2, 1.0)),
+        # )
+        # NOTE: Add only for visuals
+        # self.net = self.scene.add_entity(
+        #     material=gs.materials.PBD.Cloth(),
+        #     morph=gs.morphs.Mesh(
+        #         file="misc/net.obj",
+        #         scale=0.5,
+        #         pos=(0.0, 0.0, 0.9),
+        #         euler=(180.0, 0.0, 0.0),
+        #     ),
+        #     surface=gs.surfaces.Default(
+        #         color=(0.2, 0.6, 0.2, 1.0),
+        #     ),
+        # )
 
         # build controller
-        self.controller = build_controller(
+        self.bambi_1_controller = build_controller(
             self.env_cfg["controller_type"], drone=self.bambi_1, num_envs=self.num_envs, dt=self.dt, cfg=self.env_cfg
+        )
+        self.bambi_2_controller = build_controller(
+            self.env_cfg["controller_type"], drone=self.bambi_2, num_envs=self.num_envs, dt=self.dt, cfg=self.env_cfg
         )
 
         # build scene
@@ -178,15 +181,14 @@ class SprindEnv:
 
         solver.add_weld_constraint(tip1.idx, rod_lnk.idx)
         solver.add_weld_constraint(tip2.idx, rod_lnk.idx)
-
-        # net
-        P = self.net.get_particles_pos()
-        P0 = P[0] if P.dim() == 3 else P          
-        top = torch.where(P0[:, 2] > P0[:, 2].max() - 0.02)[0]
-        self.net.fix_particles_to_link(rod_lnk.idx, particles_idx_local=top.tolist())
-
         # rod cg
-        solver.add_weld_constraint(rod_lnk.idx, self.rod_cg.base_link.idx)
+        # solver.add_weld_constraint(rod_lnk.idx, self.rod_cg.base_link.idx)
+
+        # net NOTE: Add only for visuals
+        # P = self.net.get_particles_pos()
+        # P0 = P[0] if P.dim() == 3 else P          
+        # top = torch.where(P0[:, 2] > P0[:, 2].max() - 0.02)[0]
+        # self.net.fix_particles_to_link(rod_lnk.idx, particles_idx_local=top.tolist())
 
         # prepare reward functions and multiply reward scales by dt
         self.reward_functions, self.episode_sums = dict(), dict()
@@ -229,8 +231,6 @@ class SprindEnv:
         self.extras = dict()  # extra information for logging
 
         self.rope_dofs_local = torch.arange(6, self.bambi_1.n_dofs, device=gs.device)
-        # for joint in self.bambi_1.joints:
-        #     print(joint.name, joint.dof_idx_local)
         self.reset()
 
     def _resample_commands(self, envs_idx):
@@ -250,8 +250,8 @@ class SprindEnv:
 
         bambi_1_actions = self.actions[:, 0:4]
         bambi_2_actions = self.actions[:, 4:8]
-        self.bambi_1.set_propellers_rpm(self.controller.update(bambi_1_actions))
-        self.bambi_2.set_propellers_rpm(self.controller.update(bambi_2_actions))
+        self.bambi_1.set_propellers_rpm(self.bambi_1_controller.update(bambi_1_actions))
+        self.bambi_2.set_propellers_rpm(self.bambi_2_controller.update(bambi_2_actions))
 
         # update target pos
         if self.target is not None:
@@ -401,7 +401,8 @@ class SprindEnv:
         self.last_actions[envs_idx] = 0.0
         self.episode_length_buf[envs_idx] = 0
         self.reset_buf[envs_idx] = True
-        self.controller.reset_idx(envs_idx)
+        self.bambi_1_controller.reset_idx(envs_idx)
+        self.bambi_2_controller.reset_idx(envs_idx)
 
         # fill extras
         self.extras["episode"] = {}
