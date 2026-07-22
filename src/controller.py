@@ -50,8 +50,6 @@ class SRT(BaseController):
 
     def update(self, actions: torch.Tensor) -> torch.Tensor:
         return (1 + actions * self.action_scale) * self.hover_rpm
-        # return 0.5 * (actions + 1.0) * 21400
-
 
 class px4CTBR(BaseController):
     """PX4-style rate controller:

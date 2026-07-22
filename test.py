@@ -13,8 +13,8 @@ from rsl_rl.runners import OnPolicyRunner
 
 import genesis as gs
 
-from src.env_camera import RaceEnv
-# from src.env import RaceEnv
+# from src.env_camera import RaceEnv
+from src.env import RaceEnv
 
 
 def main():
@@ -22,8 +22,9 @@ def main():
     parser.add_argument("-e", "--exp_name", type=str, default="drone-hovering")
     parser.add_argument("-c", "--ckpt", type=int, default=300)
     parser.add_argument("-t", "--time", type=int, default=20)
-    parser.add_argument("-cm", "--control_mode", type=str, default="SRT")
+    # parser.add_argument("-cm", "--control_mode", type=str, default="SRT")
     parser.add_argument("--record", action="store_true", default=False)
+    parser.add_argument("--export", action="store_true", default=False)
     args = parser.parse_args()
 
     gs.init()
@@ -37,7 +38,7 @@ def main():
     env_cfg["visualize_camera"] = args.record
     env_cfg["max_visualize_FPS"] = 60
     env_cfg["episode_length_s"] = args.time
-    env_cfg["controller_type"] = args.control_mode 
+    # env_cfg["controller_type"] = args.control_mode 
 
     env = RaceEnv(
         num_envs=1,
@@ -50,43 +51,47 @@ def main():
 
     runner = OnPolicyRunner(env, train_cfg, log_dir, device=gs.device)
     runner.load(os.path.join(log_dir, f"model_{args.ckpt}.pt"))
-    policy = runner.get_inference_policy(device=gs.device)
+    
+    if args.export:
+        runner.export_policy_to_jit(log_dir, f"model_{args.ckpt}_scripted.pt")
+    else:
+        policy = runner.get_inference_policy(device=gs.device)
 
-    obs_dict = env.reset()
+        obs_dict = env.reset()
+        
+        max_sim_step = int(env_cfg["episode_length_s"] * env_cfg["max_visualize_FPS"])
+        with torch.no_grad():
+            if args.record:
+                env.cam.start_recording()
+                for _ in range(max_sim_step):
+                    actions = policy(obs_dict)
+                    obs_dict, rews, dones, infos = env.step(actions)
+                    env.cam.render()
+                env.cam.stop_recording(save_to_filename="video.mp4", fps=env_cfg["max_visualize_FPS"])
+            else:
+                for _ in range(max_sim_step):
+                    actions = policy(obs_dict)
+                    obs_dict, rews, dones, infos = env.step(actions)
 
-    max_sim_step = int(env_cfg["episode_length_s"] * env_cfg["max_visualize_FPS"])
-    with torch.no_grad():
-        if args.record:
-            env.cam.start_recording()
-            for _ in range(max_sim_step):
-                actions = policy(obs_dict)
-                obs_dict, rews, dones, infos = env.step(actions)
-                env.cam.render()
-            env.cam.stop_recording(save_to_filename="video.mp4", fps=env_cfg["max_visualize_FPS"])
-        else:
-            for _ in range(max_sim_step):
-                actions = policy(obs_dict)
-                obs_dict, rews, dones, infos = env.step(actions)
+            ## to save depth video...
+            # import numpy as np
+            # import imageio
+            # if args.record:
+            #     depth_frames = []
+            #     for _ in range(max_sim_step):
+            #         actions = policy(obs_dict)
+            #         obs_dict, rews, dones, infos = env.step(actions)
+            #         out = env.fpv_cam.render(rgb=False, depth=True)
+            #         depth = out[1] if isinstance(out, (tuple, list)) else out   # render returns (rgb, depth, ...)
+            #         depth_frames.append(np.asarray(depth).squeeze())
 
-        ## to save depth video...
-        # import numpy as np
-        # import imageio
-        # if args.record:
-        #     depth_frames = []
-        #     for _ in range(max_sim_step):
-        #         actions = policy(obs_dict)
-        #         obs_dict, rews, dones, infos = env.step(actions)
-        #         out = env.fpv_cam.render(rgb=False, depth=True)
-        #         depth = out[1] if isinstance(out, (tuple, list)) else out   # render returns (rgb, depth, ...)
-        #         depth_frames.append(np.asarray(depth).squeeze())
-
-        #     depth = np.stack(depth_frames).astype(np.float32)
-        #     finite = depth[np.isfinite(depth)]
-        #     lo, hi = np.percentile(finite, 1), np.percentile(finite, 99)   # clip outliers/inf background
-        #     depth = np.clip((depth - lo) / (hi - lo + 1e-8), 0, 1)
-        #     depth = 1.0 - depth
-        #     depth_u8 = (depth * 255).astype(np.uint8)                       # (T, H, W)
-        #     imageio.mimsave("depth.mp4", depth_u8, fps=env_cfg["max_visualize_FPS"])
+            #     depth = np.stack(depth_frames).astype(np.float32)
+            #     finite = depth[np.isfinite(depth)]
+            #     lo, hi = np.percentile(finite, 1), np.percentile(finite, 99)   # clip outliers/inf background
+            #     depth = np.clip((depth - lo) / (hi - lo + 1e-8), 0, 1)
+            #     depth = 1.0 - depth
+            #     depth_u8 = (depth * 255).astype(np.uint8)                       # (T, H, W)
+            #     imageio.mimsave("depth.mp4", depth_u8, fps=env_cfg["max_visualize_FPS"])
 
 if __name__ == "__main__":
     main()
