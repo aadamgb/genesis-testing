@@ -1,0 +1,22 @@
+defaults:
+  - task: racing
+  - override hydra/job_logging: disabled
+  - override hydra/hydra_logging: disabled        
+  - _self_
+
+e:  ${name}             
+cm: SRT                 
+B:  8192                
+m:  301                 
+seed: 1
+vis: false
+
+log_dir: logs/${e}
+
+hydra:
+  run:
+    dir: ${log_dir}
+  job:
+    chdir: false        # keep cwd at repo root for misc/ paths
+  output_subdir: null   # don't write .hydra/ (your rmtree would nuke it anyway)
+
