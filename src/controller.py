@@ -39,7 +39,6 @@ class BaseController(ABC):
     def reset_idx(self, envs_idx: torch.Tensor) -> None:
         """Override to for env reset"""
 
-
 class SRT(BaseController):
     """Single Rotor Thrust: actions are per-motor thrust deltas around hover RPM."""
 
@@ -69,7 +68,7 @@ class px4CTBR(BaseController):
         # self.gain_p = K * t("rate_p", (0.042, 0.042, 0.2))
         # self.gain_i = K * t("rate_i", (0.08, 0.08, 0.1))
         # self.gain_d = K * t("rate_d", (0.0015, 0.0015, 0.0))
-        self.gain_p = K * t("rate_p", (0.02, 0.02, 0.2))    # roll/pitch halved, yaw untouched
+        self.gain_p = K * t("rate_p", (0.02, 0.02, 0.2))    
         self.gain_i = K * t("rate_i", (0.0, 0.0, 0.0))
         self.gain_d = K * t("rate_d", (0.0, 0.0, 0.0))
         self.gain_ff = t("rate_ff", (0.0, 0.0, 0.0))
@@ -92,16 +91,10 @@ class px4CTBR(BaseController):
     def update(self, actions: torch.Tensor) -> torch.Tensor:
         rate = transform_by_quat(self.drone.get_ang(), inv_quat(self.drone.get_quat()))
 
-        # throttle = 0.5 * (actions[:, 0:1] + 1.0)  
-
-        # thrust fraction that produces hover: (hover_rpm/max_rpm)^2 = 1/TWR
-              # a300: 0.144
-
-        # action 0 -> hover; -1 -> 0 thrust; +1 -> full thrust (piecewise linear)
         a = actions[:, 0:1]
         throttle = torch.where(
             a < 0,
-            self.hover_frac * (1.0 + a),                    # [-1,0] -> [0, hover]
+            self.hover_frac * (1.0 + a),                         # [-1,0] -> [0, hover]
             self.hover_frac + a * (1.0 - self.hover_frac),       # [0,1]  -> [hover, 1]
         )
          
@@ -120,7 +113,6 @@ class px4CTBR(BaseController):
         motor_norm = self._mixer_px4(throttle, torque)    # [0, 1] thrust fraction
 
         return self.max_rpm * torch.sqrt(motor_norm)
-        # return self.max_rpm * motor_norm
 
     def _update_integral(self, rate_error):
         i_factor = rate_error / self.i_factor_norm
