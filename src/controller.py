@@ -170,7 +170,7 @@ class px4CTBR(BaseController):
                    + pitch * self.pitch_scale
                    + thr * self.thrust_scale)
 
-        # airmode disabled
+        # airmode = 0
         outputs = self._minimize_saturation(outputs, self.thrust_scale, 0.0, 1.0, reduce_only=True)
         outputs = self._minimize_saturation(outputs, self.roll_scale, 0.0, 1.0, reduce_only=False)
         outputs = self._minimize_saturation(outputs, self.pitch_scale, 0.0, 1.0, reduce_only=False)

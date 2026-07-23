@@ -50,6 +50,8 @@ reward:
 
 command:
   num_commands: 3
+  # track stays a plain data file — gates + arena limits loaded by RaceEnv
+  track_path: misc/fig8.yaml
 
 rsl_rl:
   algorithm:
@@ -86,19 +88,3 @@ rsl_rl:
   run_name: ${e}
   logger: tensorboard
 
-# track stays as a plain data file — keep your existing misc/*.yaml and load_track
-track_path: misc/fig8.yaml
-
-# run params
-exp_name: race
-num_envs: 8192
-max_iterations: 301
-seed: 1
-v: ${v}
-log_dir: logs/${e}
-
-hydra:
-  run:
-    dir: ${log_dir}
-  job:
-    chdir: false

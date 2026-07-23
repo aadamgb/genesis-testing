@@ -4,14 +4,14 @@ defaults:
   - override hydra/hydra_logging: disabled        
   - _self_
 
-e:  ${name}             
+e:  no_name            
 cm: SRT                 
 B:  8192                
 m:  301                 
 seed: 1
 v: false
 
-log_dir: logs/${e}
+log_dir: logs/${task.name}/${e}_${cm}
 
 hydra:
   run:

@@ -1,6 +1,7 @@
 import torch
 import math
 import copy
+import yaml
 from tensordict import TensorDict
 
 import genesis as gs
@@ -16,8 +17,21 @@ from genesis.utils.geom import (
 from src.controller import build_controller
 
 
+def load_track(track_path):
+    with open(track_path, "r") as f:
+        track = yaml.safe_load(f)
+    return {
+        "gates_pos": [g["position"] for g in track["gates"]],
+        "gates_rpy": [g["rpy"] for g in track["gates"]],
+        "limits": {k: v for d in track["limits"] for k, v in d.items()},
+    }
+
+
 class RaceEnv:
     def __init__(self, num_envs, env_cfg, obs_cfg, reward_cfg, command_cfg, show_viewer=False):
+        track = load_track(command_cfg["track_path"])
+        env_cfg.update(track["limits"])
+
         self.num_envs = num_envs
         self.rendered_env_num = min(10, self.num_envs)
         self.num_actions = env_cfg["num_actions"]
@@ -68,7 +82,7 @@ class RaceEnv:
         # add target
         if self.env_cfg["visualize_target"]:
             # static gate meshes for the whole track
-            for gate_pos, gate_rpy in zip(command_cfg["gates_position"], command_cfg["gates_rpy"]):
+            for gate_pos, gate_rpy in zip(track["gates_pos"], track["gates_rpy"]):
                 self.scene.add_entity(
                     morph=gs.morphs.Mesh(
                         file="misc/gate.obj",
@@ -142,8 +156,8 @@ class RaceEnv:
         self.commands = torch.zeros((self.num_envs, self.num_commands), device=gs.device, dtype=gs.tc_float)
 
         # racing track gates: each env targets the gates sequentially
-        self.gates_position = torch.tensor(command_cfg["gates_position"], device=gs.device, dtype=gs.tc_float)
-        self.gates_rpy = torch.tensor(command_cfg["gates_rpy"], device=gs.device, dtype=gs.tc_float)
+        self.gates_position = torch.tensor(track["gates_pos"], device=gs.device, dtype=gs.tc_float)
+        self.gates_rpy = torch.tensor(track["gates_rpy"], device=gs.device, dtype=gs.tc_float)
         self.gates_R = quat_to_R(xyz_to_quat(self.gates_rpy, rpy=True, degrees=True))  
         self.num_gates = self.gates_position.shape[0]
         self.gate_idx = torch.zeros((self.num_envs,), device=gs.device, dtype=torch.long)

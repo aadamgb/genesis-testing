@@ -10,11 +10,11 @@ t: 20
 record: false
 export: false
      
-log_dir: logs/${e}
+log_dir: ???  # required by user!
 
 hydra:
-  output_subdir: null
   run:
-    dir: .
+    dir: ${log_dir}
   job:
-    chdir: false
+    chdir: false       
+  output_subdir: null   
