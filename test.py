@@ -1,97 +1,77 @@
-import argparse
 import os
 import pickle
-from importlib import metadata
 import torch
-
-try:
-    if int(metadata.version("rsl-rl-lib").split(".")[0]) < 5:
-        raise ImportError
-except (metadata.PackageNotFoundError, ImportError, ValueError) as e:
-    raise ImportError("Please install 'rsl-rl-lib>=5.0.0'.") from e
+import hydra
+from omegaconf import DictConfig
 from rsl_rl.runners import OnPolicyRunner
 
 import genesis as gs
 
-# from src.env_camera import RaceEnv
-from src.env import RaceEnv
-
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-e", "--exp_name", type=str, default="drone-hovering")
-    parser.add_argument("-c", "--ckpt", type=int, default=300)
-    parser.add_argument("-t", "--time", type=int, default=20)
-    # parser.add_argument("-cm", "--control_mode", type=str, default="SRT")
-    parser.add_argument("--record", action="store_true", default=False)
-    parser.add_argument("--export", action="store_true", default=False)
-    args = parser.parse_args()
-
+@hydra.main(version_base=None, config_path="hydra_configs", config_name="test")
+def main(cfg: DictConfig):
     gs.init()
 
-    log_dir = f"logs/{args.exp_name}"
-    with open(f"logs/{args.exp_name}/cfgs.pkl", "rb") as f:
-        env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg = pickle.load(f)
-    reward_cfg["reward_scales"] = {}
+    log_dir = cfg.log_dir
+    with open(f"{log_dir}/cfgs.pkl", "rb") as f:
+        loaded = pickle.load(f)
+
+    # print(loaded)
+
+    if len(loaded) == 6:
+        task_name, env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg = loaded
+    else:
+        # DELETE this else later when all pcks are updated!
+        env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg = loaded
+        print("Carefulll task name not saved in pck, task is set to hover by defaulet!!")
+        task_name = cfg.task.name
 
     env_cfg["visualize_target"] = True
-    env_cfg["visualize_camera"] = args.record
-    env_cfg["max_visualize_FPS"] = 60
-    env_cfg["episode_length_s"] = args.time
-    # env_cfg["controller_type"] = args.control_mode 
+    env_cfg["visualize_camera"] = cfg.record
+    env_cfg["episode_length_s"] = cfg.t
 
-    env = RaceEnv(
-        num_envs=1,
-        env_cfg=env_cfg,
-        obs_cfg=obs_cfg,
-        reward_cfg=reward_cfg,
-        command_cfg=command_cfg,
-        show_viewer=True,
-    )
+    if task_name == "hover":
+        from src.env_hover import HoverEnv
+        env = HoverEnv(num_envs=1, env_cfg=env_cfg, obs_cfg=obs_cfg,
+                      reward_cfg=reward_cfg, command_cfg=command_cfg, show_viewer=True) 
+           
+    elif task_name == "racing":
+        from src.env_racing import RaceEnv
+        env = RaceEnv(num_envs=1, env_cfg=env_cfg, obs_cfg=obs_cfg,
+                      reward_cfg=reward_cfg, command_cfg=command_cfg, show_viewer=True)
+                      
+    elif task_name == "sprind":
+        from src.env_sprind import SprindEnv
+        env = SprindEnv(num_envs=1, env_cfg=env_cfg, obs_cfg=obs_cfg,
+                        reward_cfg=reward_cfg, command_cfg=command_cfg, show_viewer=True)
+    else:
+        raise ValueError(f"unknown env: {task_name}")
 
     runner = OnPolicyRunner(env, train_cfg, log_dir, device=gs.device)
-    runner.load(os.path.join(log_dir, f"model_{args.ckpt}.pt"))
-    
-    if args.export:
-        runner.export_policy_to_jit(log_dir, f"model_{args.ckpt}_scripted.pt")
-    else:
-        policy = runner.get_inference_policy(device=gs.device)
+    runner.load(os.path.join(log_dir, f"model_{cfg.c}.pt"))
+    if cfg.export:
+        runner.export_policy_to_jit(log_dir, f"model_{cfg.c}_scripted.pt")
+        return
 
-        obs_dict = env.reset()
-        
-        max_sim_step = int(env_cfg["episode_length_s"] * env_cfg["max_visualize_FPS"])
-        with torch.no_grad():
-            if args.record:
-                env.cam.start_recording()
-                for _ in range(max_sim_step):
-                    actions = policy(obs_dict)
-                    obs_dict, rews, dones, infos = env.step(actions)
-                    env.cam.render()
-                env.cam.stop_recording(save_to_filename="video.mp4", fps=env_cfg["max_visualize_FPS"])
-            else:
-                for _ in range(max_sim_step):
-                    actions = policy(obs_dict)
-                    obs_dict, rews, dones, infos = env.step(actions)
+    policy = runner.get_inference_policy(device=gs.device)
+    obs_dict = env.reset()
 
-            ## to save depth video...
-            # import numpy as np
-            # import imageio
-            # if args.record:
-            #     depth_frames = []
-            #     for _ in range(max_sim_step):
-            #         actions = policy(obs_dict)
-            #         obs_dict, rews, dones, infos = env.step(actions)
-            #         out = env.fpv_cam.render(rgb=False, depth=True)
-            #         depth = out[1] if isinstance(out, (tuple, list)) else out   # render returns (rgb, depth, ...)
-            #         depth_frames.append(np.asarray(depth).squeeze())
+    # ====================================================
+    # ------------------ Sim Loop ------------------------
+    # ====================================================
+    max_sim_step = int(env_cfg["episode_length_s"] * env_cfg["max_visualize_FPS"])
+    with torch.no_grad():
+        if cfg.record:
+            env.cam.start_recording()
+            for _ in range(max_sim_step):
+                actions = policy(obs_dict)
+                obs_dict, rews, dones, infos = env.step(actions)
+                env.cam.render()
+            env.cam.stop_recording(save_to_filename="video.mp4", fps=env_cfg["max_visualize_FPS"])
+        else:
+            for _ in range(max_sim_step):
+                actions = policy(obs_dict)
+                obs_dict, rews, dones, infos = env.step(actions)
 
-            #     depth = np.stack(depth_frames).astype(np.float32)
-            #     finite = depth[np.isfinite(depth)]
-            #     lo, hi = np.percentile(finite, 1), np.percentile(finite, 99)   # clip outliers/inf background
-            #     depth = np.clip((depth - lo) / (hi - lo + 1e-8), 0, 1)
-            #     depth = 1.0 - depth
-            #     depth_u8 = (depth * 255).astype(np.uint8)                       # (T, H, W)
-            #     imageio.mimsave("depth.mp4", depth_u8, fps=env_cfg["max_visualize_FPS"])
 
 if __name__ == "__main__":
     main()

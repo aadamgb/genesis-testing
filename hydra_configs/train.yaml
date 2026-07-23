@@ -9,7 +9,7 @@ cm: SRT
 B:  8192                
 m:  301                 
 seed: 1
-vis: false
+v: false
 
 log_dir: logs/${e}
 
@@ -17,6 +17,6 @@ hydra:
   run:
     dir: ${log_dir}
   job:
-    chdir: false        # keep cwd at repo root for misc/ paths
-  output_subdir: null   # don't write .hydra/ (your rmtree would nuke it anyway)
+    chdir: false       
+  output_subdir: null   
 

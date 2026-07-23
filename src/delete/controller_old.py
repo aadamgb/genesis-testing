@@ -30,7 +30,7 @@ class BaseController(ABC):
         self.mass = float(drone_params["mass"])
         self.hover_rpm = np.sqrt(((9.81 * self.mass) / 4.0) / self.KF)
         self.max_rpm = np.sqrt(self.hover_rpm ** 2 * self.TWR)
-        self.hover_frac = (self.hover_rpm / self.max_rpm) ** 2
+
 
     @abstractmethod
     def update(self, actions: torch.Tensor) -> torch.Tensor:
@@ -63,15 +63,11 @@ class px4CTBR(BaseController):
             return torch.tensor(cfg.get(key, default), device=device, dtype=ft)
 
         self.max_rates = t("max_rates", (6.0, 6.0, 3.0))          
-        # self.max_rates = t("max_rates", (3.0, 3.0, 1.5))          
 
         K = t("rate_k", (1.0, 1.0, 1.0))
-        # self.gain_p = K * t("rate_p", (0.042, 0.042, 0.2))
-        # self.gain_i = K * t("rate_i", (0.08, 0.08, 0.1))
-        # self.gain_d = K * t("rate_d", (0.0015, 0.0015, 0.0))
-        self.gain_p = K * t("rate_p", (0.02, 0.02, 0.2))    # roll/pitch halved, yaw untouched
-        self.gain_i = K * t("rate_i", (0.0, 0.0, 0.0))
-        self.gain_d = K * t("rate_d", (0.0, 0.0, 0.0))
+        self.gain_p = K * t("rate_p", (0.042, 0.042, 0.2))
+        self.gain_i = K * t("rate_i", (0.08, 0.08, 0.1))
+        self.gain_d = K * t("rate_d", (0.0015, 0.0015, 0.0))
         self.gain_ff = t("rate_ff", (0.0, 0.0, 0.0))
         self.lim_int = t("rate_int_limit", (0.30, 0.30, 0.30))
         self.i_factor_norm = np.radians(400.0)
@@ -85,6 +81,7 @@ class px4CTBR(BaseController):
         self.rate_int = torch.zeros((num_envs, 3), device=device, dtype=ft)
         self.prev_rate = torch.zeros((num_envs, 3), device=device, dtype=ft)
 
+
     def reset_idx(self, envs_idx):
         self.rate_int[envs_idx] = 0.0
         self.prev_rate[envs_idx] = 0.0
@@ -92,21 +89,9 @@ class px4CTBR(BaseController):
     def update(self, actions: torch.Tensor) -> torch.Tensor:
         rate = transform_by_quat(self.drone.get_ang(), inv_quat(self.drone.get_quat()))
 
-        # throttle = 0.5 * (actions[:, 0:1] + 1.0)  
-
-        # thrust fraction that produces hover: (hover_rpm/max_rpm)^2 = 1/TWR
-              # a300: 0.144
-
-        # action 0 -> hover; -1 -> 0 thrust; +1 -> full thrust (piecewise linear)
-        a = actions[:, 0:1]
-        throttle = torch.where(
-            a < 0,
-            self.hover_frac * (1.0 + a),                    # [-1,0] -> [0, hover]
-            self.hover_frac + a * (1.0 - self.hover_frac),       # [0,1]  -> [hover, 1]
-        )
-         
         rate_sp = actions[:, 1:4] * self.max_rates
-               
+        throttle = 0.5 * (actions[:, 0:1] + 1.0)          
+
         angular_accel = (rate - self.prev_rate) / self.dt
         self.prev_rate.copy_(rate)
 
@@ -120,7 +105,6 @@ class px4CTBR(BaseController):
         motor_norm = self._mixer_px4(throttle, torque)    # [0, 1] thrust fraction
 
         return self.max_rpm * torch.sqrt(motor_norm)
-        # return self.max_rpm * motor_norm
 
     def _update_integral(self, rate_error):
         i_factor = rate_error / self.i_factor_norm

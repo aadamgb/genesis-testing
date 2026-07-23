@@ -114,12 +114,12 @@ class RaceEnv:
         self.base_init_pos = torch.tensor(self.env_cfg["base_init_pos"], device=gs.device)
         self.base_init_quat = torch.tensor(self.env_cfg["base_init_quat"], device=gs.device)
         self.inv_base_init_quat = inv_quat(self.base_init_quat)
-        # self.drone = self.scene.add_entity(gs.morphs.Drone(file="urdf/drones/cf2x.urdf"))
-        # self.drone = self.scene.add_entity(gs.morphs.Drone(file="urdf/drones/racer.urdf"))
-        self.drone = self.scene.add_entity(gs.morphs.Drone(
-                                            file="misc/urdf/a300.urdf",
-                                            propellers_spin=(-1, -1, 1, 1),
-                                            ))
+        self.drone = self.scene.add_entity(
+            gs.morphs.Drone(
+                file="misc/urdf/a300.urdf",
+                propellers_spin=(-1, -1, 1, 1)
+            )
+        )
 
         # build scene
         self.scene.build(n_envs=num_envs)
@@ -166,13 +166,6 @@ class RaceEnv:
 
     def _resample_commands(self, envs_idx):
         self.commands[envs_idx] = self.gates_position[self.gate_idx[envs_idx]]
-
-    # def _at_target(self):
-    #     return (
-    #         (torch.norm(self.rel_pos, dim=1) < self.env_cfg["at_target_threshold"])
-    #         .nonzero(as_tuple=False)
-    #         .reshape((-1,))
-    #     )
     
     def _at_gate(self):
         R = self.gates_R[self.gate_idx]                       
@@ -191,6 +184,9 @@ class RaceEnv:
         torch.clamp(actions, -self.env_cfg["clip_actions"], self.env_cfg["clip_actions"], out=self.actions)
 
         self.drone.set_propellers_rpm(self.controller.update(self.actions))
+        # update target pos
+        # if self.target is not None:
+        #     self.target.set_pos(self.commands, zero_velocity=True)
 
         self.scene.step()
 
@@ -345,7 +341,7 @@ class RaceEnv:
 
     def _reward_yaw(self):
         yaw = self.base_euler[:, 2]
-        yaw = torch.where(yaw > 180, yaw - 360, yaw) / 180 * 3.14159  # use rad for yaw_reward
+        yaw = torch.where(yaw > 180, yaw - 360, yaw) / 180 * 3.14159  
         yaw_rew = torch.exp(self.reward_cfg["yaw_lambda"] * torch.abs(yaw))
         return yaw_rew
 

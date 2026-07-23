@@ -1,0 +1,20 @@
+defaults:
+  - task: hover
+  - override hydra/job_logging: disabled
+  - override hydra/hydra_logging: disabled        
+  - _self_
+
+e: drone-hovering
+c: 300
+t: 20
+record: false
+export: false
+     
+log_dir: logs/${e}
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+  job:
+    chdir: false
